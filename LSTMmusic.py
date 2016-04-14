@@ -1310,16 +1310,16 @@ def main():
     #myRNN4Music.loadParameters('examples400_120_noSoftmax_RNN7_676plus')
     
 
-    myRNN4Music.loadParameters('fixedTrial_xEnError_182')    
+    #myRNN4Music.loadParameters('fixedTrial_xEnError_182')    
 
     #examples400_120_noSoftmax_RNN7_676_r2plus sounds good on generating [100]
     #200 examples over 10 hrs
-#    for n in np.arange(182,np.array(dataset).shape[0],1): #np.arange(np.array(dataset).shape[0]):
-#         print('training with data[' + str(n) + ']')
-#  	 myRNN4Music.resetStates()
-#         myRNN4Music.resetRMSgrads()   
-#         myRNN4Music.train(np.float32(dataset[n][0:dataLength[n]-2]), np.float32(dataset[n][1:dataLength[n]-1]), noOfEpoch, sizeOfMiniBatch) 
-#         myRNN4Music.saveParameters('fixedTrial_xEnError_182')
+    for n in np.arange(0,np.array(dataset).shape[0],1): #np.arange(np.array(dataset).shape[0]):
+         print('training with data[' + str(n) + ']')
+  	 myRNN4Music.resetStates()
+         myRNN4Music.resetRMSgrads()   
+         myRNN4Music.train(np.float32(dataset[n][0:dataLength[n]-2]), np.float32(dataset[n][1:dataLength[n]-1]), noOfEpoch, sizeOfMiniBatch) 
+         myRNN4Music.saveParameters('original')
          #myRNN4Music.printDerivatives()
          #myRNN4Music.printWeights()
 #    myRNN4Music.saveParameters('fixedTrial')
