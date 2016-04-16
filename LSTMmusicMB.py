@@ -1159,15 +1159,17 @@ class RNN4Music:
 	#useful prints function structure to file:
         #theano.printing.pydotprint(gradfn)    
 
+        dataLength = [np.array(dataset[n]).shape[0] for n in np.arange(np.array(dataset).shape[0])]
+        tuneLength = np.min(dataLength)
+        tuneIndex = np.arange(np.array(dataset).shape[0])
+
         print("-------------------------------------------")
         print("no. of epochs/MB = " + str(noOfEpochPerMB))
         print("size of mini-batch = " + str(sizeOfMiniBatch))
         print("no. of epochs of MB = " + str(noOfEpoch))
+        print("length of each tune in MB = " +str(tuneLength))
         print("-------------------------------------------")
 
-        dataLength = [np.array(dataset[n]).shape[0] for n in np.arange(np.array(dataset).shape[0])]
-        tuneLength = np.min(dataLength)
-        tuneIndex = np.arange(np.array(dataset).shape[0])
 
         for n in np.arange(noOfEpoch):
                 shuffle(tuneIndex)
@@ -1313,7 +1315,8 @@ def main():
     sizeOfMiniBatch = 10 #how many tunes per miniBatch
     noOfEpoch = 100 
     noOfEpochPerMB = 10
-    path = './Piano-midi.de/train'
+    path = './Piano-midi.de/train-individual/hpps'
+    #path = './Piano-midi.de/train'
     files = os.listdir(path)
     assert len(files) > 0, 'Training set is empty!' \
                                ' (did you download the data files?)'
@@ -1370,17 +1373,33 @@ def main():
     
     print("dataset shape is " + str(np.array(dataset[0])[0:2,:].shape))
 
-    #myRNN4Music.loadParameters('fixedTrial_xEnError_182')    
+    myRNN4Music.loadParameters('MB_all_100')    
 
     myRNN4Music.train(dataset, noOfEpochPerMB, noOfEpoch, sizeOfMiniBatch)
-    myRNN4Music.saveParameters('MB_all_100')
+    myRNN4Music.saveParameters('MB_all_200')
 
+    myRNN4Music.train(dataset, noOfEpochPerMB, noOfEpoch, sizeOfMiniBatch)
+    myRNN4Music.saveParameters('MB_all_300')
+    myRNN4Music.train(dataset, noOfEpochPerMB, noOfEpoch, sizeOfMiniBatch)
+    myRNN4Music.saveParameters('MB_all_400')
+    myRNN4Music.train(dataset, noOfEpochPerMB, noOfEpoch, sizeOfMiniBatch)
+    myRNN4Music.saveParameters('MB_all_500')
+    myRNN4Music.train(dataset, noOfEpochPerMB, noOfEpoch, sizeOfMiniBatch)
+    myRNN4Music.saveParameters('MB_all_600')
+    myRNN4Music.train(dataset, noOfEpochPerMB, noOfEpoch, sizeOfMiniBatch)
+    myRNN4Music.saveParameters('MB_all_700')
+    myRNN4Music.train(dataset, noOfEpochPerMB, noOfEpoch, sizeOfMiniBatch)
+    myRNN4Music.saveParameters('MB_all_800')
+    myRNN4Music.train(dataset, noOfEpochPerMB, noOfEpoch, sizeOfMiniBatch)
+    myRNN4Music.saveParameters('MB_all_900')
+    myRNN4Music.train(dataset, noOfEpochPerMB, noOfEpoch, sizeOfMiniBatch)
+    myRNN4Music.saveParameters('MB_all_1000')
 
-    baseSample = 303
+    baseSample = 30
     exampleLength = 10
     myRNN4Music.resetStates()
     generatedTuneProb = myRNN4Music.genMusic(np.float32(dataset[baseSample][0:exampleLength]), 2000)
-    midiwrite('fixedtrial_' + str(baseSample) + '182xEnError.mid', generatedTuneProb[0], (21, 109),0.3)
+    midiwrite('MB_all_100_' + str(baseSample) + '.mid', generatedTuneProb[0], (21, 109),0.3)
     #generatedTuneProb[0] is the tune, generatedTuneProb[1] is the probability at each iteration
     plt.figure(0)
     plt.imshow(np.array(generatedTuneProb[1][0:20,25:65]), origin = 'lower', extent=[25,65,0,20], aspect=1,
@@ -1391,7 +1410,7 @@ def main():
     plt.colorbar()
 
     plt.figure(1)
-    plt.imshow(np.transpose(dataset[baseSample][0:dataLength[baseSample]]), origin='lower', aspect='auto',
+    plt.imshow(np.transpose(dataset[baseSample]), origin='lower', aspect='auto',
                              interpolation='nearest', cmap=pylab.cm.gray_r)
     plt.colorbar()
     plt.title('original piano-roll')
