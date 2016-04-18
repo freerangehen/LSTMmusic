@@ -4,7 +4,7 @@
 ########################################################################
 
 
-import pydot
+#import pydot
 import numpy as np
 import matplotlib
 import matplotlib.pyplot as plt
@@ -15,7 +15,7 @@ from copy import deepcopy
 import pickle as pkl
 import time
 import os
-import theano 
+import theano #typical 2x speed up for small network, 400x600x600 net ~6x speed up
 from theano import tensor as T, function, printing
 from theano.sandbox.rng_mrg import MRG_RandomStreams as RandomStreams
 import theano.sandbox.cuda as cuda
@@ -69,8 +69,8 @@ class RNN4Music:
 	self.gradClip = np.float32(30.0) # gradient cap parameter, cap too much it oscillates, cannot exceed the randomness of the weights... 
 
 	# parameters for randomly initialising weights/biases
-	self.muRand = 0.01 # for weights/biases that are initialisaed to ~uniform(0, muRand) 
-        self.sigRand = 0.1 #S.D. of normally distributed initialisation of weights/biases
+	self.muRand = np.float32(0.01) # for weights/biases that are initialisaed to ~uniform(0, muRand) 
+        self.sigRand = np.float32(0.1) #S.D. of normally distributed initialisation of weights/biases
 
 	# house keeping variables        
 	self.parameterSaved = False
@@ -548,8 +548,8 @@ class RNN4Music:
 	#D_yt = D_yt_temp[0] #sqr error cost function
         D_Yt = T.mul(D_yt, self.gdot(Yt))
         
-	#sqrCost = T.sum(T.mul(np.float32(0.5), T.mul(kt-yt,kt-yt)), dtype=theano.config.floatX, acc_dtype=theano.config.floatX)
-	sqrCost = T.sum(-T.mul(kt,T.log(yt)) - T.mul((np.float32(1.0)-kt), T.log(np.float32(1.0)-yt)))
+	#costEst = T.sum(T.mul(np.float32(0.5), T.mul(kt-yt,kt-yt)), dtype=theano.config.floatX, acc_dtype=theano.config.floatX)
+	costEst = T.sum(-T.mul(kt,T.log(yt)) - T.mul((np.float32(1.0)-kt), T.log(np.float32(1.0)-yt)))
 
 
         ###### start with layer 3 for back prop ##### 
@@ -593,7 +593,7 @@ class RNN4Music:
         D_it_1 = T.mul(D_ct_1, self.tanh(Ct_1))
         D_It_1 = T.mul(D_it_1, self.gdot(It_1))       
                
-        return [sqrCost, D_Yt, D_It_3, D_It_2, D_It_1, D_Ft_3, D_Ft_2, D_Ft_1, D_Ct_3, D_Ct_2, D_Ct_1, D_Ot_3, D_Ot_2, D_Ot_1, 
+        return [costEst, D_Yt, D_It_3, D_It_2, D_It_1, D_Ft_3, D_Ft_2, D_Ft_1, D_Ct_3, D_Ct_2, D_Ct_1, D_Ot_3, D_Ot_2, D_Ot_1, 
                     D_ct_3, D_ct_2, D_ct_1, D_ot_3, D_ot_2, D_ot_1, D_ft_3, D_ft_2, D_ft_1, D_it_3, D_it_2, D_it_1] # first line is for weights update, second line is to be feedback
         
     def gClip(self, inTensor):
@@ -989,7 +989,7 @@ class RNN4Music:
 		T.sum(D_Ct_3Acc, axis=0, acc_dtype=theano.config.floatX), T.sum(D_Ot_1Acc, axis=0, acc_dtype=theano.config.floatX),
 		T.sum(D_Ot_2Acc, axis=0, acc_dtype=theano.config.floatX), T.sum(D_Ot_3Acc, axis=0, acc_dtype=theano.config.floatX),
 	        T.sum(D_YtAcc, axis=0, acc_dtype=theano.config.floatX), 
-		KLAcc, Tc1Acc[-1], Tc2Acc[-1], Tc3Acc[-1], Th1Acc[-1], Th2Acc[-1], Th3Acc[-1]]
+		T.sum(KLAcc, acc_dtype=theano.config.floatX), Tc1Acc[-1], Tc2Acc[-1], Tc3Acc[-1], Th1Acc[-1], Th2Acc[-1], Th3Acc[-1]]
         
 
     def mean(self, inputT):
@@ -1124,7 +1124,7 @@ class RNN4Music:
                                   		(self.Wci_1, self.Wci_1 - self.R1*DWci1), (self.Wci_2, self.Wci_2 - self.R2*DWci2), (self.Wci_3, self.Wci_3 - self.R3*DWci3),
                                   		(self.Wcf_1, self.Wcf_1 - self.R1*DWcf1), (self.Wcf_2, self.Wcf_2 - self.R2*DWcf2), (self.Wcf_3, self.Wcf_3 - self.R3*DWcf3),
                                   		(self.Wco_1, self.Wco_1 - self.R1*DWco1), (self.Wco_2, self.Wco_2 - self.R2*DWco2), (self.Wco_3, self.Wco_3 - self.R3*DWco3),
-                                 		 (self.loss, T.sum(self.mean(KLAccR), dtype=theano.config.floatX, acc_dtype=theano.config.floatX)),
+                                 		 (self.loss, self.mean(KLAccR)),
                                   		(self.bi_1, self.bi_1 - self.R1*Dbi1), (self.bi_2, self.bi_2 - self.R2*Dbi2), (self.bi_3, self.bi_3 - self.R3*Dbi3),
                                   		(self.bf_1, self.bf_1 - self.R1*Dbf1), (self.bf_2, self.bf_2 - self.R2*Dbf2), (self.bf_3, self.bf_3 - self.R3*Dbf3),
                                   		(self.bc_1, self.bc_1 - self.R1*Dbc1), (self.bc_2, self.bc_2 - self.R2*Dbc2), (self.bc_3, self.bc_3 - self.R3*Dbc3),
@@ -1263,6 +1263,13 @@ class RNN4Music:
         print('by=' + str(np.array(self.by.eval())));
 
 
+    def setNewRates(self, R1, R2, R3, Rout):
+	self.R1 = np.float32(R1)
+	self.R2 = np.float32(R2)
+	self.R3 = np.float32(R3)
+	self.Rout = np.float32(Rout)
+
+
     def genMusic(self, startVectors, noOfSamps):
         '''
 	gemerates music by feeding output of network back into input of network at next time step
@@ -1312,10 +1319,10 @@ class RNN4Music:
 
         
 def main():
-    sizeOfMiniBatch = 10 #how many tunes per miniBatch
+    sizeOfMiniBatch = 20 #how many tunes per miniBatch
     noOfEpoch = 100 
     noOfEpochPerMB = 10
-    path = './Piano-midi.de/train-individual/hpps'
+    path = './Piano-midi.de/train/jigs'
     #path = './Piano-midi.de/train'
     files = os.listdir(path)
     assert len(files) > 0, 'Training set is empty!' \
@@ -1324,11 +1331,11 @@ def main():
     dataset = [midiread((path + "/" + f), (21, 109),0.3).piano_roll.astype(theano.config.floatX) for f in files]
     #to check size, use print(str(np.array(dataset).shape)) and print(str(np.array(dataset[data#]).shape))
     #np.transpose(dataset) gives you dataset[data stream#, 0-87][sample, 0-575][onehot encoded in a 88 sized vector, 0-87]
-    print("np.array(dataset).shape = " + str(np.array(dataset).shape))
-    print("np.array(dataset[1]).shape = " + str(np.array(dataset[1]).shape))
-    print("np.array(dataset[40]).shape = " + str(np.array(dataset[40]).shape))
-    print("np.array(dataset[40]).shape[0] = " + str(np.array(dataset[40]).shape[0]))
-    print("np.transpose(np.array(dataset[1])).shape = " + str(np.transpose(np.array(dataset[1])).shape))
+    #print("np.array(dataset).shape = " + str(np.array(dataset).shape))
+    #print("np.array(dataset[1]).shape = " + str(np.array(dataset[1]).shape))
+    #print("np.array(dataset[40]).shape = " + str(np.array(dataset[40]).shape))
+    #print("np.array(dataset[40]).shape[0] = " + str(np.array(dataset[40]).shape[0]))
+    #print("np.transpose(np.array(dataset[1])).shape = " + str(np.transpose(np.array(dataset[1])).shape))
   
     #print(str(dataset[40][400][87]))
     #print(str([dataset[40][n][87] for n in np.arange(0,601,1)])) #np.arnage(start, stop, step), dataset[40][400:405][87] does not work like matlab does... 
@@ -1348,9 +1355,6 @@ def main():
     print("maximum of dataset[3] = " + str(np.max(dataset[3])))
     print("minimum of dataset[3] = " + str(np.min(dataset[3])))
   
-    #shifting input to zero centre does not work as crossing zero blows things up...
-
-
     #check number of notes for each tune:
        
     print(str([np.array(dataset[n]).shape[0] for n in np.arange(np.array(dataset).shape[0])]))
@@ -1368,38 +1372,39 @@ def main():
     #    for n in np.arange(0,np.array(dataset[k]).shape[0],1):
     #        dataset[k][n][0] = np.float32(2.0)*cp.deepcopy(dataset[k][n][0]) - np.float32(1.0)
 
-    myRNN4Music = RNN4Music(h1_length=120, h2_length=120, h3_length=120, io_length=88, R1=0.01, R2=0.01, R3=0.01, Rout=0.01) 
+    myRNN4Music = RNN4Music(h1_length=176, h2_length=176, h3_length=176, io_length=88, R1=np.float32(0.0001), R2=np.float32(0.0001), R3=np.float32(0.0001), Rout=np.float32(0.0001)) 
 
     
     print("dataset shape is " + str(np.array(dataset[0])[0:2,:].shape))
 
-    myRNN4Music.loadParameters('MB_all_100')    
+    
+    #myRNN4Music.loadParameters('MB_all_200')    
+    # first nan in "loss" appears at epoch 230... 
+
+    #myRNN4Music.loadParameters('528_264_176_0_0001_sqr_jigs')
+    #myRNN4Music.setNewRates(1.0, 1.0, 1.0, 1.0)
 
     myRNN4Music.train(dataset, noOfEpochPerMB, noOfEpoch, sizeOfMiniBatch)
-    myRNN4Music.saveParameters('MB_all_200')
+    myRNN4Music.saveParameters('176_176_176_0_0001_sqr_jigs_100')
+    
+    #myRNN4Music.train(dataset, noOfEpochPerMB, noOfEpoch, sizeOfMiniBatch)
+    #myRNN4Music.saveParameters('MB_200_sqr_jigs')
+    #myRNN4Music.train(dataset, noOfEpochPerMB, noOfEpoch, sizeOfMiniBatch)
+    #myRNN4Music.saveParameters('MB_300_sqr_jigs')
+    #myRNN4Music.train(dataset, noOfEpochPerMB, noOfEpoch, sizeOfMiniBatch)
+    #myRNN4Music.saveParameters('MB_400_sqr_jigs')
+    #myRNN4Music.train(dataset, noOfEpochPerMB, noOfEpoch, sizeOfMiniBatch)
+    #myRNN4Music.saveParameters('MB_500_sqr_jigs')
 
-    myRNN4Music.train(dataset, noOfEpochPerMB, noOfEpoch, sizeOfMiniBatch)
-    myRNN4Music.saveParameters('MB_all_300')
-    myRNN4Music.train(dataset, noOfEpochPerMB, noOfEpoch, sizeOfMiniBatch)
-    myRNN4Music.saveParameters('MB_all_400')
-    myRNN4Music.train(dataset, noOfEpochPerMB, noOfEpoch, sizeOfMiniBatch)
-    myRNN4Music.saveParameters('MB_all_500')
-    myRNN4Music.train(dataset, noOfEpochPerMB, noOfEpoch, sizeOfMiniBatch)
-    myRNN4Music.saveParameters('MB_all_600')
-    myRNN4Music.train(dataset, noOfEpochPerMB, noOfEpoch, sizeOfMiniBatch)
-    myRNN4Music.saveParameters('MB_all_700')
-    myRNN4Music.train(dataset, noOfEpochPerMB, noOfEpoch, sizeOfMiniBatch)
-    myRNN4Music.saveParameters('MB_all_800')
-    myRNN4Music.train(dataset, noOfEpochPerMB, noOfEpoch, sizeOfMiniBatch)
-    myRNN4Music.saveParameters('MB_all_900')
-    myRNN4Music.train(dataset, noOfEpochPerMB, noOfEpoch, sizeOfMiniBatch)
-    myRNN4Music.saveParameters('MB_all_1000')
 
-    baseSample = 30
-    exampleLength = 10
+
+
+
+    baseSample = 1
+    exampleLength = 20
     myRNN4Music.resetStates()
     generatedTuneProb = myRNN4Music.genMusic(np.float32(dataset[baseSample][0:exampleLength]), 2000)
-    midiwrite('MB_all_100_' + str(baseSample) + '.mid', generatedTuneProb[0], (21, 109),0.3)
+    midiwrite('176_176_176_0_0001_sqr_jigs' + str(baseSample) + '.mid', generatedTuneProb[0], (21, 109),0.3)
     #generatedTuneProb[0] is the tune, generatedTuneProb[1] is the probability at each iteration
     plt.figure(0)
     plt.imshow(np.array(generatedTuneProb[1][0:20,25:65]), origin = 'lower', extent=[25,65,0,20], aspect=1,

@@ -4,7 +4,7 @@
 ########################################################################
 
 
-import pydot
+#import pydot
 import numpy as np
 import matplotlib
 import matplotlib.pyplot as plt
@@ -15,10 +15,11 @@ from copy import deepcopy
 import pickle as pkl
 import time
 import os
-import theano 
+import theano #typical 2x speed up for small network, 400x600x600 net ~6x speed up
 from theano import tensor as T, function, printing
 from theano.sandbox.rng_mrg import MRG_RandomStreams as RandomStreams
 import theano.sandbox.cuda as cuda
+from random import shuffle
 #from theano.compile.nanguardmode import NanGuardMode
 
 
@@ -40,44 +41,44 @@ class RNN4Music:
     def __init__(self,h1_length = 200, h2_length = 200, h3_length = 200, io_length=88, 
                  R1=0.0001, R2=0.0001, R3=0.0001, Rout=0.0001):
         '''
-	Constructor of RNN4Music objects. Implements a fixed 3 layer LSTM. For architecture, see Alex Graves' paper: 
-		[generated sequences with recurrent neural networks](http://arxiv.org/pdf/1308.0850v5.pdf)
-	
+        Constructor of RNN4Music objects. Implements a fixed 3 layer LSTM. For architecture, see Alex Graves' paper: 
+        [generated sequences with recurrent neural networks](http://arxiv.org/pdf/1308.0850v5.pdf)
+    
 
-	arguments:
+        arguments:
 
-	h1_length (int): no. of LSTM units in first layer 
+        h1_length (int): no. of LSTM units in first layer 
 
-	h2_length (int): no. of LSTM units in second layer 
+        h2_length (int): no. of LSTM units in second layer 
 
-	h3_length (int): third layer size (output contributes to overall output only) 	
+        h3_length (int): third layer size (output contributes to overall output only) 	
 
-	io_length (int): no. of inputs. 
+        io_length (int): no. of inputs. 
 
-	R1 (int): training rate of weights and biases in layer 1
+        R1 (int): training rate of weights and biases in layer 1
 
-	R2 (int): training rate of weights and biases in layer 2
+        R2 (int): training rate of weights and biases in layer 2
 
-	R3 (int): training rate of weights and biases in layer 3
+        R3 (int): training rate of weights and biases in layer 3
 
-	Rout (int): training rate of weights and biases in output layer
+        Rout (int): training rate of weights and biases in output layer
         '''
 
-	# computational parameters for safe-guarding:
+        # computational parameters for safe-guarding:
         self.epsilon = np.float32(0.00001) #small number to guard against dividing by zero
-	self.gradClip = np.float32(30.0) # gradient cap parameter, cap too much it oscillates, cannot exceed the randomness of the weights... 
+        self.gradClip = np.float32(30.0) # gradient cap parameter, cap too much it oscillates, cannot exceed the randomness of the weights... 
 
-	# parameters for randomly initialising weights/biases
-	self.muRand = 0.01 # for weights/biases that are initialisaed to ~uniform(0, muRand) 
-        self.sigRand = 0.1 #S.D. of normally distributed initialisation of weights/biases
+        # parameters for randomly initialising weights/biases
+        self.muRand = np.float32(0.01) # for weights/biases that are initialisaed to ~uniform(0, muRand) 
+        self.sigRand = np.float32(0.1) #S.D. of normally distributed initialisation of weights/biases
 
-	# house keeping variables        
-	self.parameterSaved = False
+        # house keeping variables        
+        self.parameterSaved = False
         self.parameterLoaded = False
         self.instantaneousCost = []        
         
-	#push arguments as instance variables for network parameters
-	self.h1_length = h1_length
+        #push arguments as instance variables for network parameters
+        self.h1_length = h1_length
         self.h2_length = h2_length
         self.h3_length = h3_length
         self.io_length = io_length
@@ -86,8 +87,8 @@ class RNN4Music:
         self.h3io_l = (io_length + h1_length + h2_length)*h3_length
         self.out_l = (h2_length+h1_length+h3_length)*io_length
         self.R1 = R1; self.R2 = R2; self.R3 = R3; self.Rout = Rout
-       	 
-	self.T_rng = RandomStreams()
+
+        self.T_rng = RandomStreams()
         
         self.loss = theano.shared(value=np.float32(0.0), name='loss', borrow=True, allow_downcast=True)
 
@@ -385,9 +386,9 @@ class RNN4Music:
         self.Dbyp.set_value(np.float32([0.0]*self.io_length))
         
     def forwardPassGen(self, in1, htd1_1, htd1_2, htd1_3, ctd1_1, ctd1_2, ctd1_3):
-	'''
-	'''       
-	
+        '''
+        '''       
+
         [gyt, gYt, ght_1, ght_2, ght_3, gct_1, gct_2, gct_3, 
                 git_1, git_2, git_3, gft_1, gft_2, gft_3, got_1, got_2, got_3,
                 gIt_1, gIt_2, gIt_3, gFt_1, gFt_2, gFt_3, gOt_1, gOt_2, gOt_3, gCt_1, gCt_2, gCt_3] = self.forwardPass(in1, htd1_1, htd1_2, htd1_3, ctd1_1, ctd1_2, ctd1_3)
@@ -405,36 +406,36 @@ class RNN4Music:
  
     def forwardPass(self, in1, htd1_1, htd1_2, htd1_3, ctd1_1, ctd1_2, ctd1_3): #for use in scan(), arguments needs to be ordered as: "sequences", "input_info", "non-sequences"
         '''
-	One step forward in time: given memory states and hidden layer outputs at time (t-1), compute memory states, outputs of each layer, 
-	and internal gate variables at time t
+        One step forward in time: given memory states and hidden layer outputs at time (t-1), compute memory states, outputs of each layer, 
+            and internal gate variables at time t
 
-	
-	arguments:
+    
+        arguments:
 
-		htd1_1 (theano tensor.vector) : h1(t-1), output of (hidden) layer 1 delayed by one time step
-		htd1_2 (theano tensor.vector) : h2(t-1), output of (hidden) layer 2 delayed by one time step
-		htd1_3 (theano tensor.vector) : h3(t-1), output of (hidden) layer 3 delayed by one time step
+            htd1_1 (theano tensor.vector) : h1(t-1), output of (hidden) layer 1 delayed by one time step
+            htd1_2 (theano tensor.vector) : h2(t-1), output of (hidden) layer 2 delayed by one time step
+            htd1_3 (theano tensor.vector) : h3(t-1), output of (hidden) layer 3 delayed by one time step
 
-	ctd1_1 (theano tensor.vector) : c1(t-1), layer 1 memory state delayed by one time step
-	ctd1_2 (theano tensor.vector) : c2(t-1), layer 2 memory state delayed by one time step
-	ctd1_3 (theano tensor.vector) : c3(t-1), layer 3 memory state delayed by one time step
+            ctd1_1 (theano tensor.vector) : c1(t-1), layer 1 memory state delayed by one time step
+            ctd1_2 (theano tensor.vector) : c2(t-1), layer 2 memory state delayed by one time step
+            ctd1_3 (theano tensor.vector) : c3(t-1), layer 3 memory state delayed by one time step
 
-	outputs (modifies instance variables):
+            outputs (modifies instance variables):
 
-		self.yt, self.Yt (theano tensor.vector) : network output, network output beforen nonlinearity
-		self.ht_1, self.ht_2, self.ht_3 (theano tensor.vector): output of each layer 
-		self.ct_1, self.ct_2, self.ct_3 (theano tensor.vector): memory state of each layer
+            self.yt, self.Yt (theano tensor.vector) : network output, network output beforen nonlinearity
+            self.ht_1, self.ht_2, self.ht_3 (theano tensor.vector): output of each layer 
+            self.ct_1, self.ct_2, self.ct_3 (theano tensor.vector): memory state of each layer
 
-        	self.it_1, self.it_2, self.it_3 (theano tensor.vector): output of input gates of each layer 
-		self.ft_1, self.ft_2, self.ft_3 (theano tensor.vector): output of forget gates of each layer 
-		self.ot_1, self.ot_2, self.ot_3 (theano tensor.vector): output of output gates of each layer 
+            self.it_1, self.it_2, self.it_3 (theano tensor.vector): output of input gates of each layer 
+            self.ft_1, self.ft_2, self.ft_3 (theano tensor.vector): output of forget gates of each layer 
+            self.ot_1, self.ot_2, self.ot_3 (theano tensor.vector): output of output gates of each layer 
 
-        	self.It_1, self.It_2, self.It_3 (theano tensor.vector): output of input gates of each layer before nonlinearity
-		self.Ft_1, self.Ft_2, self.Ft_3 (theano tensor.vector): output of forget gates of each layer before nonlinearity
-		self.Ot_1, self.Ot_2, self.Ot_3 (theano tensor.vector): output of output gates of each layer before nonlinearity
+            self.It_1, self.It_2, self.It_3 (theano tensor.vector): output of input gates of each layer before nonlinearity
+            self.Ft_1, self.Ft_2, self.Ft_3 (theano tensor.vector): output of forget gates of each layer before nonlinearity
+            self.Ot_1, self.Ot_2, self.Ot_3 (theano tensor.vector): output of output gates of each layer before nonlinearity
 
-		self.Ct_1, self.Ct_2, self.Ct_3 (theano tensor.vector): memory state of each layer before nonlinearity
-	
+            self.Ct_1, self.Ct_2, self.Ct_3 (theano tensor.vector): memory state of each layer before nonlinearity
+
         
         '''
 
@@ -482,12 +483,12 @@ class RNN4Music:
         self.Yt = T.dot(self.Why_1,self.ht_1) + T.dot(self.Why_2,self.ht_2) + T.dot(self.Why_3, self.ht_3) + self.by 
         self.yt = T.nnet.sigmoid(self.Yt)    
         
-	#likely problems with this... Ct, ct mixed...
+        #likely problems with this... Ct, ct mixed...
         #return [self.yt, self.Yt, self.ht_1, self.ht_2, self.ht_3, self.Ct_1, self.ct_2, self.ct_3, 
         #        self.It_1, self.it_2, self.it_3, self.Ft_1, self.ft_2, self.ft_3, self.Ot_1, self.ot_2, self.ot_3,
         #        self.It_1, self.It_2, self.It_3, self.Ft_1, self.Ft_2, self.Ft_3, self.Ot_1, self.Ot_2, self.Ot_3, self.Ct_1, self.Ct_2, self.Ct_3]
 
-	return [self.yt, self.Yt, self.ht_1, self.ht_2, self.ht_3, self.ct_1, self.ct_2, self.ct_3, 
+        return [self.yt, self.Yt, self.ht_1, self.ht_2, self.ht_3, self.ct_1, self.ct_2, self.ct_3, 
                 self.it_1, self.it_2, self.it_3, self.ft_1, self.ft_2, self.ft_3, self.ot_1, self.ot_2, self.ot_3,
                 self.It_1, self.It_2, self.It_3, self.Ft_1, self.Ft_2, self.Ft_3, self.Ot_1, self.Ot_2, self.Ot_3, self.Ct_1, self.Ct_2, self.Ct_3]
     
@@ -541,14 +542,14 @@ class RNN4Music:
 
 	'''
 
-        D_yt_temp = - (kt / T.maximum(self.epsilon, yt)) + ((np.float32(1.0) - kt) / (1-T.minimum((np.float32(1.0) - self.epsilon),yt))) #cross entropy cost function
-        D_yt = D_yt_temp #cross entropy square error
-	#D_yt_temp = yt - kt #sqr error cost function
-	#D_yt = D_yt_temp[0] #sqr error cost function
+        #D_yt_temp = - (kt / T.maximum(self.epsilon, yt)) + ((np.float32(1.0) - kt) / (1-T.minimum((np.float32(1.0) - self.epsilon),yt))) #cross entropy cost function
+        #D_yt = D_yt_temp #cross entropy square error
+        D_yt_temp = yt - kt #sqr error cost function
+        D_yt = D_yt_temp[0] #sqr error cost function
         D_Yt = T.mul(D_yt, self.gdot(Yt))
         
-	#sqrCost = T.sum(T.mul(np.float32(0.5), T.mul(kt-yt,kt-yt)), dtype=theano.config.floatX, acc_dtype=theano.config.floatX)
-	sqrCost = T.sum(-T.mul(kt,T.log(yt)) - T.mul((np.float32(1.0)-kt), T.log(np.float32(1.0)-yt)))
+        costEst = T.sum(T.mul(np.float32(0.5), T.mul(kt-yt,kt-yt)), dtype=theano.config.floatX, acc_dtype=theano.config.floatX)
+        #costEst = T.sum(-T.mul(kt,T.log(yt)) - T.mul((np.float32(1.0)-kt), T.log(np.float32(1.0)-yt)))
 
 
         ###### start with layer 3 for back prop ##### 
@@ -592,27 +593,27 @@ class RNN4Music:
         D_it_1 = T.mul(D_ct_1, self.tanh(Ct_1))
         D_It_1 = T.mul(D_it_1, self.gdot(It_1))       
                
-        return [sqrCost, D_Yt, D_It_3, D_It_2, D_It_1, D_Ft_3, D_Ft_2, D_Ft_1, D_Ct_3, D_Ct_2, D_Ct_1, D_Ot_3, D_Ot_2, D_Ot_1, 
+        return [costEst, D_Yt, D_It_3, D_It_2, D_It_1, D_Ft_3, D_Ft_2, D_Ft_1, D_Ct_3, D_Ct_2, D_Ct_1, D_Ot_3, D_Ot_2, D_Ot_1, 
                     D_ct_3, D_ct_2, D_ct_1, D_ot_3, D_ot_2, D_ot_1, D_ft_3, D_ft_2, D_ft_1, D_it_3, D_it_2, D_it_1] # first line is for weights update, second line is to be feedback
         
     def gClip(self, inTensor):
-	'''
-	upper clips magnitude of input tensor (theano symbolic) to self.gradClip
+        '''
+        upper clips magnitude of input tensor (theano symbolic) to self.gradClip
 
-	argument:
-		inTensor (theano tensor): input tensor be either matrix or vector	
+        argument:
+        inTensor (theano tensor): input tensor be either matrix or vector	
 
-	return:
-		sign(input) * min(|input|, self.gradClip)
+        return:
+            sign(input) * min(|input|, self.gradClip)
 
-	'''
+        '''
         return T.mul(T.sgn(inTensor), T.minimum(self.gradClip,T.abs_(inTensor)))
     
         
     def tanh(self, inVec):
-	'''
-	computes tanh(input), input is theano tensor (symbolic)
-	'''
+        '''
+        computes tanh(input), input is theano tensor (symbolic)
+        '''
         return T.mul(np.float32(2.0), T.nnet.sigmoid(T.mul(np.float32(2.0), inVec))) - np.float32(1.0)
         
     def RMSgrad(self, prevGrad, newGrad):
@@ -626,7 +627,7 @@ class RNN4Music:
     
     def tdot(self, inVec):
         ''' 
-	computes derivative of tanh: tanh'(input), input is theano tensor (symbolic)
+        computes derivative of tanh: tanh'(input), input is theano tensor (symbolic)
         derivation starts by writing tanh as 2S(x) - 1, S(x) as sigmoid function
         '''
         return T.mul(np.float32(4.0), self.gdot(T.mul(np.float32(2.0),inVec)))# - np.float32(1.0)
@@ -647,12 +648,13 @@ class RNN4Music:
     
                                     
     def loadParameters(self, fileName):
-	'''
-	loads saved parameters from npz file, once loaded training etc can resume
+        '''
+        loads saved parameters from npz file, once loaded training etc can resume
 
-	argument:
-	fileName (string): file name of saved parameter file without npz file extension
-	'''
+        argument:
+        fileName (string): file name of saved parameter file without npz file extension
+        '''
+
         #print("before loading, omega = " + str(self.T_omega.eval()))
         #with open(fileName+'.npz', "rb") as file_:
         #    loadedFile = np.load(file_)
@@ -710,12 +712,12 @@ class RNN4Music:
     
         
     def saveParameters(self, fileName):
-	'''
-	saves network status to npz file, once saved, can use self.loadParameters(self, fileName) to load state and resume training etc
+        '''
+        saves network status to npz file, once saved, can use self.loadParameters(self, fileName) to load state and resume training etc
 
-	argument:
-	fileName (string): npz filename to be saved, overwrites if exists. supply filename without .npz extension.
-	'''
+        argument:
+        fileName (string): npz filename to be saved, overwrites if exists. supply filename without .npz extension.
+        '''
         #print("before saving, omega = " + str(self.T_omega.eval()))
         np.savez(fileName, instantaneousCost = self.instantaneousCost, gradClip = self.gradClip, h1_length = self.h1_length, h2_length = self.h2_length, io_length = self.io_length, 
                                     R1 = np.float32(self.R1), R2 = np.float32(self.R2), R3 = np.float32(self.R3),
@@ -851,69 +853,34 @@ class RNN4Music:
 
 
 
-    def gradSingleTune(self, T_egMB, T_egOutMB, Thtd1_1, Thtd1_2, Thtd1_3, Tctd1_1, Tctd1_2, Tctd1_3):
-	# some local variables: 
-        #T_0_5 = theano.shared(value=np.float32(0.5),name = 'T_0_5', allow_downcast=True)
-        #T_egMB = T.matrix(name='T_egMB', dtype=theano.config.floatX)
-        #T_egOutMB = T.matrix(name='T_egOutMB', dtype=theano.config.floatX)
-        #Tin = T.vector(name='T_in', dtype=theano.config.floatX)
-        #output_info temporary symbols for forward run:
-        #Thtd1_1 = T.vector(name='Thtd1_1', dtype=theano.config.floatX);  Thtd1_2 = T.vector(name='Thtd1_2', dtype=theano.config.floatX);  Thtd1_3 = T.vector(name='Thtd1_3', dtype=theano.config.floatX)
-        #Tctd1_1 = T.vector(name='Tctd1_1', dtype=theano.config.floatX);  Tctd1_2 = T.vector(name='Tctd1_2', dtype=theano.config.floatX);  Tctd1_3 = T.vector(name='Tctd1_3', dtype=theano.config.floatX)
+    def gradSingleTune(self, T_egMB, T_egOutMB):
 
 
-        #output_info temporary symbols for backwards run:
-        #TDct3 = T.vector(name='TDct3', dtype=theano.config.floatX);  TDct2 = T.vector(name='TDct2', dtype=theano.config.floatX);  TDct1 = T.vector(name='TDct1', dtype=theano.config.floatX)
-        #TDot3 = T.vector(name='TDot3', dtype=theano.config.floatX);  TDot2 = T.vector(name='TDot2', dtype=theano.config.floatX);  TDot1 = T.vector(name='TDot1', dtype=theano.config.floatX)
-        #TDft3 = T.vector(name='TDft3', dtype=theano.config.floatX);  TDft2 = T.vector(name='TDft2', dtype=theano.config.floatX);  TDft1 = T.vector(name='TDft1', dtype=theano.config.floatX)
-        #TDit3 = T.vector(name='TDit3', dtype=theano.config.floatX);  TDit2 = T.vector(name='TDit2', dtype=theano.config.floatX);  TDit1 = T.vector(name='TDit1', dtype=theano.config.floatX)
-        #weight gradient accumlation run temporary symbols
-        #TWxi1 = T.matrix(name='TWxi1', dtype=theano.config.floatX);  TWxi2 = T.matrix(name='TWxi2', dtype=theano.config.floatX);  TWxi3 = T.matrix(name='TWxi3', dtype=theano.config.floatX)
-        #TWxf1 = T.matrix(name='TWxf1', dtype=theano.config.floatX);  TWxf2 = T.matrix(name='TWxf2', dtype=theano.config.floatX);  TWxf3 = T.matrix(name='TWxf3', dtype=theano.config.floatX)
-        #TWxo1 = T.matrix(name='TWxo1', dtype=theano.config.floatX);  TWxo2 = T.matrix(name='TWxo2', dtype=theano.config.floatX);  TWxo3 = T.matrix(name='TWxo3', dtype=theano.config.floatX) 
-        #TWxc1 = T.matrix(name='TWxc1', dtype=theano.config.floatX);  TWxc2 = T.matrix(name='TWxc2', dtype=theano.config.floatX);  TWxc3 = T.matrix(name='TWxc3', dtype=theano.config.floatX)  
-        #
-        #TWhi1 = T.matrix(name='TWhi1', dtype=theano.config.floatX);  TWhi2 = T.matrix(name='TWhi2', dtype=theano.config.floatX);  TWhi3 = T.matrix(name='TWhi3', dtype=theano.config.floatX)
-        #TWhf1 = T.matrix(name='TWhf1', dtype=theano.config.floatX);  TWhf2 = T.matrix(name='TWhf2', dtype=theano.config.floatX);  TWhf3 = T.matrix(name='TWhf3', dtype=theano.config.floatX)
-        #TWho1 = T.matrix(name='TWho1', dtype=theano.config.floatX);  TWho2 = T.matrix(name='TWho2', dtype=theano.config.floatX);  TWho3 = T.matrix(name='TWho3', dtype=theano.config.floatX) 
-        #TWhc1 = T.matrix(name='TWhc1', dtype=theano.config.floatX);  TWhc2 = T.matrix(name='TWhc2', dtype=theano.config.floatX);  TWhc3 = T.matrix(name='TWhc3', dtype=theano.config.floatX) 
-        #
-        #TWhy1 = T.matrix(name='TWhy1', dtype=theano.config.floatX);  TWhy2 = T.matrix(name='TWhy2', dtype=theano.config.floatX);  TWhy3 = T.matrix(name='TWhy3', dtype=theano.config.floatX) 
-        #
-        #TWxj2 = T.matrix(name='TWxj2', dtype=theano.config.floatX);  TWxj3 = T.matrix(name='TWxj3', dtype=theano.config.floatX)
-        #TWfj2 = T.matrix(name='TWfj2', dtype=theano.config.floatX);  TWfj3 = T.matrix(name='TWfj3', dtype=theano.config.floatX)
-        #TWcj2 = T.matrix(name='TWcj2', dtype=theano.config.floatX);  TWcj3 = T.matrix(name='TWcj3', dtype=theano.config.floatX)
-        #TWoj2 = T.matrix(name='TWoj2', dtype=theano.config.floatX);  TWoj3 = T.matrix(name='TWoj3', dtype=theano.config.floatX)
-        # 
-        #TWci1 = T.vector(name='TWci1', dtype=theano.config.floatX);  TWci2 = T.vector(name='TWci2', dtype=theano.config.floatX);  TWci3 = T.vector(name='TWci3', dtype=theano.config.floatX)
-        #TWcf1 = T.vector(name='TWcf1', dtype=theano.config.floatX);  TWcf2 = T.vector(name='TWcf2', dtype=theano.config.floatX);  TWcf3 = T.vector(name='TWcf3', dtype=theano.config.floatX)
-        #TWco1 = T.vector(name='TWco1', dtype=theano.config.floatX);  TWco2 = T.vector(name='TWco2', dtype=theano.config.floatX);  TWco3 = T.vector(name='TWco3', dtype=theano.config.floatX)
-
-	#conveneint zero variables for output_info initial values:
-	ioh1 = np.float32(np.asarray([[0.0]*self.io_length for n in range(self.h1_length)]))
-	ioh2 = np.float32(np.asarray([[0.0]*self.io_length for n in range(self.h2_length)]))
-	ioh3 = np.float32(np.asarray([[0.0]*self.io_length for n in range(self.h3_length)]))
-	h1h1 = np.float32(np.asarray([[0.0]*self.h1_length for n in range(self.h1_length)]))
-	h2h2 = np.float32(np.asarray([[0.0]*self.h2_length for n in range(self.h2_length)]))
-	h3h3 = np.float32(np.asarray([[0.0]*self.h3_length for n in range(self.h3_length)]))
-	h1io = np.float32(np.asarray([[0.0]*self.h1_length for n in range(self.io_length)]))
-	h2io = np.float32(np.asarray([[0.0]*self.h2_length for n in range(self.io_length)]))
-	h3io = np.float32(np.asarray([[0.0]*self.h3_length for n in range(self.io_length)]))
-	h1h2 = np.float32(np.asarray([[0.0]*self.h1_length for n in range(self.h2_length)]))
-	h2h3 = np.float32(np.asarray([[0.0]*self.h2_length for n in range(self.h3_length)]))
-	h1v = np.float32(np.asarray([0.0]*self.h1_length))
-	h2v = np.float32(np.asarray([0.0]*self.h2_length))
-	h3v = np.float32(np.asarray([0.0]*self.h3_length))
+        #conveneint zero variables for output_info initial values:
+        ioh1 = np.float32(np.asarray([[0.0]*self.io_length for n in range(self.h1_length)]))
+        ioh2 = np.float32(np.asarray([[0.0]*self.io_length for n in range(self.h2_length)]))
+        ioh3 = np.float32(np.asarray([[0.0]*self.io_length for n in range(self.h3_length)]))
+        h1h1 = np.float32(np.asarray([[0.0]*self.h1_length for n in range(self.h1_length)]))
+        h2h2 = np.float32(np.asarray([[0.0]*self.h2_length for n in range(self.h2_length)]))
+        h3h3 = np.float32(np.asarray([[0.0]*self.h3_length for n in range(self.h3_length)]))
+        h1io = np.float32(np.asarray([[0.0]*self.h1_length for n in range(self.io_length)]))
+        h2io = np.float32(np.asarray([[0.0]*self.h2_length for n in range(self.io_length)]))
+        h3io = np.float32(np.asarray([[0.0]*self.h3_length for n in range(self.io_length)]))
+        h1h2 = np.float32(np.asarray([[0.0]*self.h1_length for n in range(self.h2_length)]))
+        h2h3 = np.float32(np.asarray([[0.0]*self.h2_length for n in range(self.h3_length)]))
+        h1v = np.float32(np.asarray([0.0]*self.h1_length))
+        h2v = np.float32(np.asarray([0.0]*self.h2_length))
+        h3v = np.float32(np.asarray([0.0]*self.h3_length))
 
 
         ###### forward run ######         
         #usage of scan(): sequences will fill up input arguments first, the leftover arguments will be filled by "output_infos". outputs_info should match return pattern, 
-	# with ones not feeding back marked as 'None'
+        # with ones not feeding back marked as 'None'
         [TytAcc, TYtAcc, Th1Acc, Th2Acc, Th3Acc, Tc1Acc, Tc2Acc, Tc3Acc, 
          Tit_1Acc, Tit_2Acc, Tit_3Acc, Tft_1Acc, Tft_2Acc, Tft_3Acc, Tot_1Acc, Tot_2Acc, Tot_3Acc,
          TIt_1Acc, TIt_2Acc, TIt_3Acc, TFt_1Acc, TFt_2Acc, TFt_3Acc, TOt_1Acc, TOt_2Acc, TOt_3Acc, TCt_1Acc, TCt_2Acc, TCt_3Acc], \
         scan_updates = theano.scan(fn=self.forwardPass, 
-                                    outputs_info=[None, None, Thtd1_1, Thtd1_2, Thtd1_3, Tctd1_1, Tctd1_2, Tctd1_3, 
+                                    outputs_info=[None, None, h1v, h2v, h3v, h1v, h2v, h3v, 
                                                   None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None], 
                                     sequences=[T_egMB]) 
         
@@ -942,17 +909,18 @@ class RNN4Music:
             D_ct_3Acc, D_ct_2Acc, D_ct_1Acc, D_ot_3Acc, D_ot_2Acc, D_ot_1Acc, D_ft_3Acc, D_ft_2Acc, D_ft_1Acc, D_it_3Acc, D_it_2Acc, D_it_1Acc], \
         scan_updates2 = theano.scan(fn=self.backwardPass,          
                                     sequences = [TytAcc, TYtAcc, T_egOutMB,
-                                                 self.p1(TIt_3Acc), self.p1(TIt_2Acc), self.p1(TIt_1Acc), self.p1(TFt_3Acc), self.p1(TFt_2Acc), self.p1(TFt_1Acc), self.p1(TOt_3Acc), self.p1(TOt_2Acc), self.p1(TOt_1Acc), self.p1(TCt_3Acc), self.p1(TCt_2Acc), self.p1(TCt_1Acc),
+                                                 self.p1(TIt_3Acc), self.p1(TIt_2Acc), self.p1(TIt_1Acc), self.p1(TFt_3Acc), self.p1(TFt_2Acc), self.p1(TFt_1Acc), 
+                                                    self.p1(TOt_3Acc), self.p1(TOt_2Acc), self.p1(TOt_1Acc), self.p1(TCt_3Acc), self.p1(TCt_2Acc), self.p1(TCt_1Acc),
                                                  TIt_3Acc, TIt_2Acc, TIt_1Acc, TFt_3Acc, TFt_2Acc, TFt_1Acc, TOt_3Acc, TOt_2Acc, TOt_1Acc, TCt_3Acc, TCt_2Acc, TCt_1Acc,
                                                  self.d1(Tc3Acc), self.d1(Tc2Acc), self.d1(Tc1Acc),
                                                  self.p1(Tft_3Acc), self.p1(Tft_2Acc), self.p1(Tft_1Acc), self.p1(Tit_3Acc), self.p1(Tit_2Acc), self.p1(Tit_1Acc),
                                                  Tit_3Acc, Tit_2Acc, Tit_1Acc, Tot_3Acc, Tot_2Acc, Tot_1Acc, Tc3Acc, Tc2Acc, Tc1Acc],
                                     outputs_info=[None, None, None, None, None, None, None, None, None, None, None, None, None, None, 
                                                     cp.deepcopy(h3v), cp.deepcopy(h2v), cp.deepcopy(h1v), 
-							cp.deepcopy(h3v), cp.deepcopy(h2v), cp.deepcopy(h1v), 
-							cp.deepcopy(h3v), cp.deepcopy(h2v), cp.deepcopy(h1v),
-							cp.deepcopy(h3v), cp.deepcopy(h2v), cp.deepcopy(h1v)],
-                                    go_backwards=True)
+                                                    cp.deepcopy(h3v), cp.deepcopy(h2v), cp.deepcopy(h1v), 
+                                                    cp.deepcopy(h3v), cp.deepcopy(h2v), cp.deepcopy(h1v),
+                                                    cp.deepcopy(h3v), cp.deepcopy(h2v), cp.deepcopy(h1v)],
+                                                    go_backwards=True)
 
 
 
@@ -967,136 +935,121 @@ class RNN4Music:
                                                             D_It_1Acc, D_It_2Acc, D_It_3Acc, D_Ft_1Acc, D_Ft_2Acc, D_Ft_3Acc, D_Ot_1Acc, D_Ot_2Acc, D_Ot_3Acc, D_Ct_1Acc, D_Ct_2Acc, D_Ct_3Acc,
                                                             D_YtAcc, Th1Acc, Th2Acc, Th3Acc, self.d1(Tc1Acc), self.d1(Tc2Acc), self.d1(Tc3Acc), Tc1Acc, Tc2Acc, Tc3Acc],
                                                outputs_info = [cp.deepcopy(ioh1), cp.deepcopy(ioh2), cp.deepcopy(ioh3), cp.deepcopy(ioh1), cp.deepcopy(ioh2), cp.deepcopy(ioh3), 	
-								cp.deepcopy(ioh1), cp.deepcopy(ioh2), cp.deepcopy(ioh3), cp.deepcopy(ioh1), cp.deepcopy(ioh2), cp.deepcopy(ioh3),
+                                                                cp.deepcopy(ioh1), cp.deepcopy(ioh2), cp.deepcopy(ioh3), cp.deepcopy(ioh1), cp.deepcopy(ioh2), cp.deepcopy(ioh3),
                                                                 cp.deepcopy(h1h1), cp.deepcopy(h2h2), cp.deepcopy(h3h3), cp.deepcopy(h1h1), cp.deepcopy(h2h2), cp.deepcopy(h3h3), 
-								cp.deepcopy(h1h1), cp.deepcopy(h2h2), cp.deepcopy(h3h3), cp.deepcopy(h1h1), cp.deepcopy(h2h2), cp.deepcopy(h3h3),
+                                                                cp.deepcopy(h1h1), cp.deepcopy(h2h2), cp.deepcopy(h3h3), cp.deepcopy(h1h1), cp.deepcopy(h2h2), cp.deepcopy(h3h3),
                                                                 cp.deepcopy(h1io), cp.deepcopy(h2io), cp.deepcopy(h3io),
                                                                 cp.deepcopy(h1h2), cp.deepcopy(h2h3), cp.deepcopy(h1h2), cp.deepcopy(h2h3), cp.deepcopy(h1h2), cp.deepcopy(h2h3), cp.deepcopy(h1h2), cp.deepcopy(h2h3),
                                                                 cp.deepcopy(h1v), cp.deepcopy(h2v), cp.deepcopy(h3v), cp.deepcopy(h1v), cp.deepcopy(h2v), cp.deepcopy(h3v), cp.deepcopy(h1v), cp.deepcopy(h2v), cp.deepcopy(h3v)])
 
 
 
-	return [Wxi1Acc[-1], Wxi2Acc[-1], Wxi3Acc[-1], Wxf1Acc[-1], Wxf2Acc[-1], Wxf3Acc[-1], Wxo1Acc[-1], Wxo2Acc[-1], Wxo3Acc[-1], Wxc1Acc[-1], Wxc2Acc[-1], Wxc3Acc[-1],
-	         Whi1Acc[-1], Whi2Acc[-1], Whi3Acc[-1], Whf1Acc[-1], Whf2Acc[-1], Whf3Acc[-1], Who1Acc[-1], Who2Acc[-1], Who3Acc[-1], Whc1Acc[-1], Whc2Acc[-1], Whc3Acc[-1],
-        	 Why1Acc[-1], Why2Acc[-1], Why3Acc[-1],
-       	  	 Wxj2Acc[-1], Wxj3Acc[-1], Wfj2Acc[-1], Wfj3Acc[-1], Wcj2Acc[-1], Wcj3Acc[-1], Woj2Acc[-1], Woj3Acc[-1],
-         	 Wci1Acc[-1], Wci2Acc[-1], Wci3Acc[-1], Wcf1Acc[-1], Wcf2Acc[-1], Wcf3Acc[-1], Wco1Acc[-1], Wco2Acc[-1], Wco3Acc[-1],
-		T.sum(D_It_1Acc, axis=0, acc_dtype=theano.config.floatX), T.sum(D_It_2Acc, axis=0, acc_dtype=theano.config.floatX),
-		T.sum(D_It_3Acc, axis=0, acc_dtype=theano.config.floatX), T.sum(D_Ft_1Acc, axis=0, acc_dtype=theano.config.floatX),
-		T.sum(D_Ft_2Acc, axis=0, acc_dtype=theano.config.floatX), T.sum(D_Ft_3Acc, axis=0, acc_dtype=theano.config.floatX),
-		T.sum(D_Ct_1Acc, axis=0, acc_dtype=theano.config.floatX), T.sum(D_Ct_2Acc, axis=0, acc_dtype=theano.config.floatX),
-		T.sum(D_Ct_3Acc, axis=0, acc_dtype=theano.config.floatX), T.sum(D_Ot_1Acc, axis=0, acc_dtype=theano.config.floatX),
-		T.sum(D_Ot_2Acc, axis=0, acc_dtype=theano.config.floatX), T.sum(D_Ot_3Acc, axis=0, acc_dtype=theano.config.floatX),
-	        T.sum(D_YtAcc, axis=0, acc_dtype=theano.config.floatX), 
-		Tc1Acc[-1], Tc2Acc[-1], Tc3Acc[-1], Th1Acc[-1], Th2Acc[-1], Th3Acc[-1], KLAcc, scan_updates, scan_updates2, scan_updates3 ]
+        return [Wxi1Acc[-1], Wxi2Acc[-1], Wxi3Acc[-1], Wxf1Acc[-1], Wxf2Acc[-1], Wxf3Acc[-1], Wxo1Acc[-1], Wxo2Acc[-1], Wxo3Acc[-1], Wxc1Acc[-1], Wxc2Acc[-1], Wxc3Acc[-1],
+                 Whi1Acc[-1], Whi2Acc[-1], Whi3Acc[-1], Whf1Acc[-1], Whf2Acc[-1], Whf3Acc[-1], Who1Acc[-1], Who2Acc[-1], Who3Acc[-1], Whc1Acc[-1], Whc2Acc[-1], Whc3Acc[-1],
+                 Why1Acc[-1], Why2Acc[-1], Why3Acc[-1],
+                 Wxj2Acc[-1], Wxj3Acc[-1], Wfj2Acc[-1], Wfj3Acc[-1], Wcj2Acc[-1], Wcj3Acc[-1], Woj2Acc[-1], Woj3Acc[-1],
+                 Wci1Acc[-1], Wci2Acc[-1], Wci3Acc[-1], Wcf1Acc[-1], Wcf2Acc[-1], Wcf3Acc[-1], Wco1Acc[-1], Wco2Acc[-1], Wco3Acc[-1],
+                T.sum(D_It_1Acc, axis=0, acc_dtype=theano.config.floatX), T.sum(D_It_2Acc, axis=0, acc_dtype=theano.config.floatX),
+                T.sum(D_It_3Acc, axis=0, acc_dtype=theano.config.floatX), T.sum(D_Ft_1Acc, axis=0, acc_dtype=theano.config.floatX),
+                T.sum(D_Ft_2Acc, axis=0, acc_dtype=theano.config.floatX), T.sum(D_Ft_3Acc, axis=0, acc_dtype=theano.config.floatX),
+                T.sum(D_Ct_1Acc, axis=0, acc_dtype=theano.config.floatX), T.sum(D_Ct_2Acc, axis=0, acc_dtype=theano.config.floatX),
+                T.sum(D_Ct_3Acc, axis=0, acc_dtype=theano.config.floatX), T.sum(D_Ot_1Acc, axis=0, acc_dtype=theano.config.floatX),
+                T.sum(D_Ot_2Acc, axis=0, acc_dtype=theano.config.floatX), T.sum(D_Ot_3Acc, axis=0, acc_dtype=theano.config.floatX),
+                T.sum(D_YtAcc, axis=0, acc_dtype=theano.config.floatX), 
+                T.sum(KLAcc, acc_dtype=theano.config.floatX), Tc1Acc[-1], Tc2Acc[-1], Tc3Acc[-1], Th1Acc[-1], Th2Acc[-1], Th3Acc[-1]]
         
 
-       
-    def train(self, egMatrix, egoutMatrix, noOfEpoch, sizeOfMiniBatch):
+    def mean(self, inputT):
         '''
-	given input and output examples, trains the 3 layer LSTM using grad descent and RMSprop
+        auxiliary function to calculatemean gradient, which is a matrix
+        input is an array of matrix
+        '''
+        return T.mean(inputT, axis=0, dtype=theano.config.floatX, acc_dtype=theano.config.floatX)
 
-	
+
+       
+    def train(self, dataset, noOfEpochPerMB, noOfEpoch, sizeOfMiniBatch, lengthOfMB):
+        '''
+        given input and output examples, trains the 3 layer LSTM using grad descent and RMSprop
+
+
         egMatrix, egoutMatrix: rows of examples, rows are supposed to be grouped into minibatches before feed into compiled gradient fn
                                 e.g. egMatrix(rows1-10), egMatrix(100-110) etc... ramdomize the minibatches
                                 each call to the compiled gradient fn will give you a single update on all of the weights
 
-	arguments:
+        arguments:
 
-		egMatrix (np.array): 2d array of input example notes over time, Index as:  [#row(time index) in example] [#note in exmaple]  
-					for minibatch training, each minibatch have to the the same size (no. of rows-time steps) and it will be randomised
-					total number of input notes (cols) at each time step (rows) have to be the same as the self.io_length parameter
+        egMatrix (np.array): 2d array of input example notes over time, Index as:  [#row(time index) in example] [#note in exmaple]  
+                            for minibatch training, each minibatch have to the the same size (no. of rows-time steps) and it will be randomised
+                            total number of input notes (cols) at each time step (rows) have to be the same as the self.io_length parameter
 
-		egoutMatrix (np.array): 2d array of multiple output example notes over time, index as  [#row(time index) in example] [#note in exmaple]
-					normally egoutMatrix is simply a time delayed version of egMatrix
-					for minibatch training, each minibatch have to occupy the same number of time steps (rows) in the example Matrixes
-					total number of output notes (cols) at each time step (rows) have to be the same as the self.io_length parameter
+        egoutMatrix (np.array): 2d array of multiple output example notes over time, index as  [#row(time index) in example] [#note in exmaple]
+                    normally egoutMatrix is simply a time delayed version of egMatrix
+                    for minibatch training, each minibatch have to occupy the same number of time steps (rows) in the example Matrixes
+                    total number of output notes (cols) at each time step (rows) have to be the same as the self.io_length parameter
 
-		noOfEpoch (int): how many times you want to run through the input examples for training
+        noOfEpoch (int): how many times you want to run through the input examples for training
 
-		sizeOfMiniBatch (int): the input example can be broken into further miniBatches. Each miniBatch induces a single gradient update per epoch. 
-					the mini. batches will be randomised during training.
+        sizeOfMiniBatch (int): the input example can be broken into further miniBatches. Each miniBatch induces a single gradient update per epoch. 
+                                the mini. batches will be randomised during training.
 
         '''
 
-	T_egMB = T.matrix(name='T_egMB', dtype=theano.config.floatX)
-        T_egOutMB = T.matrix(name='T_egOutMB', dtype=theano.config.floatX)	
+        T_egMB = T.tensor3(name='T_egMB', dtype=theano.config.floatX)
+        T_egOutMB = T.tensor3(name='T_egOutMB', dtype=theano.config.floatX)	
                               
-	[Wxi1AccR, Wxi2AccR, Wxi3AccR, Wxf1AccR, Wxf2AccR, Wxf3AccR, Wxo1AccR, Wxo2AccR, Wxo3AccR, Wxc1AccR, Wxc2AccR, Wxc3AccR,
-	 Whi1AccR, Whi2AccR, Whi3AccR, Whf1AccR, Whf2AccR, Whf3AccR, Who1AccR, Who2AccR, Who3AccR, Whc1AccR, Whc2AccR, Whc3AccR,
+
+        [Wxi1AccR, Wxi2AccR, Wxi3AccR, Wxf1AccR, Wxf2AccR, Wxf3AccR, Wxo1AccR, Wxo2AccR, Wxo3AccR, Wxc1AccR, Wxc2AccR, Wxc3AccR,
+         Whi1AccR, Whi2AccR, Whi3AccR, Whf1AccR, Whf2AccR, Whf3AccR, Who1AccR, Who2AccR, Who3AccR, Whc1AccR, Whc2AccR, Whc3AccR,
          Why1AccR, Why2AccR, Why3AccR,
-       	 Wxj2AccR, Wxj3AccR, Wfj2AccR, Wfj3AccR, Wcj2AccR, Wcj3AccR, Woj2AccR, Woj3AccR,
+         Wxj2AccR, Wxj3AccR, Wfj2AccR, Wfj3AccR, Wcj2AccR, Wcj3AccR, Woj2AccR, Woj3AccR,
          Wci1AccR, Wci2AccR, Wci3AccR, Wcf1AccR, Wcf2AccR, Wcf3AccR, Wco1AccR, Wco2AccR, Wco3AccR,
-	 D_It_1AccR, D_It_2AccR, D_It_3AccR, D_Ft_1AccR, D_Ft_2AccR, D_Ft_3AccR, D_Ct_1AccR, D_Ct_2AccR, D_Ct_3AccR, D_Ot_1AccR,	D_Ot_2AccR, D_Ot_3AccR,
-	 D_YtAccR, Tc1AccR, Tc2AccR, Tc3AccR, Th1AccR, Th2AccR, Th3AccR, KLAccR, 
-	 scan_updatesR, scan_updates2R, scan_updates3R ] = self.gradSingleTune(T_egMB, T_egOutMB, self.htd1_1, self.htd1_2, self.htd1_3, self.ctd1_1, self.ctd1_2, self.ctd1_3)
+         D_It_1AccR, D_It_2AccR, D_It_3AccR, D_Ft_1AccR, D_Ft_2AccR, D_Ft_3AccR, D_Ct_1AccR, D_Ct_2AccR, D_Ct_3AccR, D_Ot_1AccR, D_Ot_2AccR, D_Ot_3AccR,
+         D_YtAccR, KLAccR, Tc1AccR, Tc2AccR, Tc3AccR, Th1AccR, Th2AccR, Th3AccR], scan_update4 = theano.scan(fn=self.gradSingleTune, sequences=[T_egMB, T_egOutMB])
 
-#                                  (self.ctd1_1, Tc1Acc[-1]), (self.ctd1_2, Tc2Acc[-1]), (self.ctd1_3, Tc3Acc[-1]),
-#                                  (self.htd1_1, Th1Acc[-1]), (self.htd1_2, Th2Acc[-1]), (self.htd1_3, Th3Acc[-1])
 
         
-	#RMS prop update gradient of all weights with previously saved gradient and newly summed (over time) gradient. newly summed gradients have magnitudes clipped to self.gradClip  
-        DWxi1 = self.RMSgrad(self.DWxi1p, self.gClip(Wxi1AccR));  DWxi2 = self.RMSgrad(self.DWxi2p, self.gClip(Wxi2AccR));  DWxi3 = self.RMSgrad(self.DWxi3p, self.gClip(Wxi3AccR))
-        DWxf1 = self.RMSgrad(self.DWxf1p, self.gClip(Wxf1AccR));  DWxf2 = self.RMSgrad(self.DWxf2p, self.gClip(Wxf2AccR));  DWxf3 = self.RMSgrad(self.DWxf3p, self.gClip(Wxf3AccR))
-        DWxo1 = self.RMSgrad(self.DWxo1p, self.gClip(Wxo1AccR));  DWxo2 = self.RMSgrad(self.DWxo2p, self.gClip(Wxo2AccR));  DWxo3 = self.RMSgrad(self.DWxo3p, self.gClip(Wxo3AccR))
-        DWxc1 = self.RMSgrad(self.DWxc1p, self.gClip(Wxc1AccR));  DWxc2 = self.RMSgrad(self.DWxc2p, self.gClip(Wxc2AccR));  DWxc3 = self.RMSgrad(self.DWxc3p, self.gClip(Wxc3AccR))
+        #RMS prop update gradient of all weights with previously saved gradient and newly summed (over time) gradient. newly summed gradients have magnitudes clipped to self.gradClip  
+        DWxi1 = self.RMSgrad(self.DWxi1p, self.gClip(self.mean(Wxi1AccR)));  DWxi2 = self.RMSgrad(self.DWxi2p, self.gClip(self.mean(Wxi2AccR)));  DWxi3 = self.RMSgrad(self.DWxi3p, self.gClip(self.mean(Wxi3AccR)))
+        DWxf1 = self.RMSgrad(self.DWxf1p, self.gClip(self.mean(Wxf1AccR)));  DWxf2 = self.RMSgrad(self.DWxf2p, self.gClip(self.mean(Wxf2AccR)));  DWxf3 = self.RMSgrad(self.DWxf3p, self.gClip(self.mean(Wxf3AccR)))
+        DWxo1 = self.RMSgrad(self.DWxo1p, self.gClip(self.mean(Wxo1AccR)));  DWxo2 = self.RMSgrad(self.DWxo2p, self.gClip(self.mean(Wxo2AccR)));  DWxo3 = self.RMSgrad(self.DWxo3p, self.gClip(self.mean(Wxo3AccR)))
+        DWxc1 = self.RMSgrad(self.DWxc1p, self.gClip(self.mean(Wxc1AccR)));  DWxc2 = self.RMSgrad(self.DWxc2p, self.gClip(self.mean(Wxc2AccR)));  DWxc3 = self.RMSgrad(self.DWxc3p, self.gClip(self.mean(Wxc3AccR)))
         
-        DWhi1 = self.RMSgrad(self.DWhi1p, self.gClip(Whi1AccR));  DWhi2 = self.RMSgrad(self.DWhi2p, self.gClip(Whi2AccR));  DWhi3 = self.RMSgrad(self.DWhi3p, self.gClip(Whi3AccR))
-        DWhf1 = self.RMSgrad(self.DWhf1p, self.gClip(Whf1AccR));  DWhf2 = self.RMSgrad(self.DWhf2p, self.gClip(Whf2AccR));  DWhf3 = self.RMSgrad(self.DWhf3p, self.gClip(Whf3AccR))
-        DWho1 = self.RMSgrad(self.DWho1p, self.gClip(Who1AccR));  DWho2 = self.RMSgrad(self.DWho2p, self.gClip(Who2AccR));  DWho3 = self.RMSgrad(self.DWho3p, self.gClip(Who3AccR))
-        DWhc1 = self.RMSgrad(self.DWhc1p, self.gClip(Whc1AccR));  DWhc2 = self.RMSgrad(self.DWhc2p, self.gClip(Whc2AccR));  DWhc3 = self.RMSgrad(self.DWhc3p, self.gClip(Whc3AccR))
+        DWhi1 = self.RMSgrad(self.DWhi1p, self.gClip(self.mean(Whi1AccR)));  DWhi2 = self.RMSgrad(self.DWhi2p, self.gClip(self.mean(Whi2AccR)));  DWhi3 = self.RMSgrad(self.DWhi3p, self.gClip(self.mean(Whi3AccR)))
+        DWhf1 = self.RMSgrad(self.DWhf1p, self.gClip(self.mean(Whf1AccR)));  DWhf2 = self.RMSgrad(self.DWhf2p, self.gClip(self.mean(Whf2AccR)));  DWhf3 = self.RMSgrad(self.DWhf3p, self.gClip(self.mean(Whf3AccR)))
+        DWho1 = self.RMSgrad(self.DWho1p, self.gClip(self.mean(Who1AccR)));  DWho2 = self.RMSgrad(self.DWho2p, self.gClip(self.mean(Who2AccR)));  DWho3 = self.RMSgrad(self.DWho3p, self.gClip(self.mean(Who3AccR)))
+        DWhc1 = self.RMSgrad(self.DWhc1p, self.gClip(self.mean(Whc1AccR)));  DWhc2 = self.RMSgrad(self.DWhc2p, self.gClip(self.mean(Whc2AccR)));  DWhc3 = self.RMSgrad(self.DWhc3p, self.gClip(self.mean(Whc3AccR)))
         
-        DWhy1 = self.RMSgrad(self.DWhy1p, self.gClip(Why1AccR));  DWhy2 = self.RMSgrad(self.DWhy2p, self.gClip(Why2AccR));  DWhy3 = self.RMSgrad(self.DWhy3p, self.gClip(Why3AccR))
+        DWhy1 = self.RMSgrad(self.DWhy1p, self.gClip(self.mean(Why1AccR)));  DWhy2 = self.RMSgrad(self.DWhy2p, self.gClip(self.mean(Why2AccR)));  DWhy3 = self.RMSgrad(self.DWhy3p, self.gClip(self.mean(Why3AccR)))
 
-        DWxj2 = self.RMSgrad(self.DWxj2p, self.gClip(Wxj2AccR));  DWxj3 = self.RMSgrad(self.DWxj3p, self.gClip(Wxj3AccR))
-        DWfj2 = self.RMSgrad(self.DWfj2p, self.gClip(Wfj2AccR));  DWfj3 = self.RMSgrad(self.DWfj3p, self.gClip(Wfj3AccR))
-        DWcj2 = self.RMSgrad(self.DWcj2p, self.gClip(Wcj2AccR));  DWcj3 = self.RMSgrad(self.DWcj3p, self.gClip(Wcj3AccR))
-        DWoj2 = self.RMSgrad(self.DWoj2p, self.gClip(Woj2AccR));  DWoj3 = self.RMSgrad(self.DWoj3p, self.gClip(Woj3AccR))
+        DWxj2 = self.RMSgrad(self.DWxj2p, self.gClip(self.mean(Wxj2AccR)));  DWxj3 = self.RMSgrad(self.DWxj3p, self.gClip(self.mean(Wxj3AccR)))
+        DWfj2 = self.RMSgrad(self.DWfj2p, self.gClip(self.mean(Wfj2AccR)));  DWfj3 = self.RMSgrad(self.DWfj3p, self.gClip(self.mean(Wfj3AccR)))
+        DWcj2 = self.RMSgrad(self.DWcj2p, self.gClip(self.mean(Wcj2AccR)));  DWcj3 = self.RMSgrad(self.DWcj3p, self.gClip(self.mean(Wcj3AccR)))
+        DWoj2 = self.RMSgrad(self.DWoj2p, self.gClip(self.mean(Woj2AccR)));  DWoj3 = self.RMSgrad(self.DWoj3p, self.gClip(self.mean(Woj3AccR)))
         
-        DWci1 = self.RMSgrad(self.DWci1p, self.gClip(Wci1AccR));  DWci2 = self.RMSgrad(self.DWci2p, self.gClip(Wci2AccR));  DWci3 = self.RMSgrad(self.DWci3p, self.gClip(Wci3AccR))
-        DWcf1 = self.RMSgrad(self.DWcf1p, self.gClip(Wcf1AccR));  DWcf2 = self.RMSgrad(self.DWcf2p, self.gClip(Wcf2AccR));  DWcf3 = self.RMSgrad(self.DWcf3p, self.gClip(Wcf3AccR))
-        DWco1 = self.RMSgrad(self.DWco1p, self.gClip(Wco1AccR));  DWco2 = self.RMSgrad(self.DWco2p, self.gClip(Wco2AccR));  DWco3 = self.RMSgrad(self.DWco3p, self.gClip(Wco3AccR))
+        DWci1 = self.RMSgrad(self.DWci1p, self.gClip(self.mean(Wci1AccR)));  DWci2 = self.RMSgrad(self.DWci2p, self.gClip(self.mean(Wci2AccR)));  DWci3 = self.RMSgrad(self.DWci3p, self.gClip(self.mean(Wci3AccR)))
+        DWcf1 = self.RMSgrad(self.DWcf1p, self.gClip(self.mean(Wcf1AccR)));  DWcf2 = self.RMSgrad(self.DWcf2p, self.gClip(self.mean(Wcf2AccR)));  DWcf3 = self.RMSgrad(self.DWcf3p, self.gClip(self.mean(Wcf3AccR)))
+        DWco1 = self.RMSgrad(self.DWco1p, self.gClip(self.mean(Wco1AccR)));  DWco2 = self.RMSgrad(self.DWco2p, self.gClip(self.mean(Wco2AccR)));  DWco3 = self.RMSgrad(self.DWco3p, self.gClip(self.mean(Wco3AccR)))
         
-        Dbi1 = self.RMSgrad(self.Dbi1p, self.gClip(D_It_1AccR))
-        Dbi2 = self.RMSgrad(self.Dbi2p, self.gClip(D_It_2AccR))
-        Dbi3 = self.RMSgrad(self.Dbi3p, self.gClip(D_It_3AccR))
-        Dbf1 = self.RMSgrad(self.Dbf1p, self.gClip(D_Ft_1AccR))
-        Dbf2 = self.RMSgrad(self.Dbf2p, self.gClip(D_Ft_2AccR))
-        Dbf3 = self.RMSgrad(self.Dbf3p, self.gClip(D_Ft_3AccR))
-        Dbc1 = self.RMSgrad(self.Dbc1p, self.gClip(D_Ct_1AccR))
-        Dbc2 = self.RMSgrad(self.Dbc2p, self.gClip(D_Ct_2AccR))
-        Dbc3 = self.RMSgrad(self.Dbc3p, self.gClip(D_Ct_3AccR))
-        Dbo1 = self.RMSgrad(self.Dbo1p, self.gClip(D_Ot_1AccR))
-        Dbo2 = self.RMSgrad(self.Dbo2p, self.gClip(D_Ot_2AccR))
-        Dbo3 = self.RMSgrad(self.Dbo3p, self.gClip(D_Ot_3AccR))
-        Dby = self.RMSgrad(self.Dbyp, self.gClip(D_YtAccR))
+        Dbi1 = self.RMSgrad(self.Dbi1p, self.gClip(self.mean(D_It_1AccR)))
+        Dbi2 = self.RMSgrad(self.Dbi2p, self.gClip(self.mean(D_It_2AccR)))
+        Dbi3 = self.RMSgrad(self.Dbi3p, self.gClip(self.mean(D_It_3AccR)))
+        Dbf1 = self.RMSgrad(self.Dbf1p, self.gClip(self.mean(D_Ft_1AccR)))
+        Dbf2 = self.RMSgrad(self.Dbf2p, self.gClip(self.mean(D_Ft_2AccR)))
+        Dbf3 = self.RMSgrad(self.Dbf3p, self.gClip(self.mean(D_Ft_3AccR)))
+        Dbc1 = self.RMSgrad(self.Dbc1p, self.gClip(self.mean(D_Ct_1AccR)))
+        Dbc2 = self.RMSgrad(self.Dbc2p, self.gClip(self.mean(D_Ct_2AccR)))
+        Dbc3 = self.RMSgrad(self.Dbc3p, self.gClip(self.mean(D_Ct_3AccR)))
+        Dbo1 = self.RMSgrad(self.Dbo1p, self.gClip(self.mean(D_Ot_1AccR)))
+        Dbo2 = self.RMSgrad(self.Dbo2p, self.gClip(self.mean(D_Ot_2AccR)))
+        Dbo3 = self.RMSgrad(self.Dbo3p, self.gClip(self.mean(D_Ot_3AccR)))
+        Dby = self.RMSgrad(self.Dbyp, self.gClip(self.mean(D_YtAccR)))
             
         
-        ##backward pass testing, backward pass takes inputs from forward pass, so we're compiling two sequential scan()
-        #bkwdfn = theano.function(inputs=[T_egMB, T_egOutMB,
-        #                                 TDct3, TDct2, TDct1, TDot3, TDot2, TDot1, TDft3, TDft2, TDft1, TDit3, TDit2, TDit1],
-        #                         outputs = [D_YtAcc, D_It_3Acc, D_It_2Acc, D_It_1Acc, D_Ft_3Acc, D_Ft_2Acc, D_Ft_1Acc, D_Ct_3Acc, D_Ct_2Acc, D_Ct_1Acc, D_Ot_3Acc, D_Ot_2Acc, D_Ot_1Acc, 
-        #                                    D_ct_3Acc, D_ct_2Acc, D_ct_1Acc, D_ot_3Acc, D_ot_2Acc, D_ot_1Acc, D_ft_3Acc, D_ft_2Acc, D_ft_1Acc, D_it_3Acc, D_it_2Acc, D_it_1Acc],
-        #                         givens = {Thtd1_1:self.htd1_1, Thtd1_2:self.htd1_2, Thtd1_3:self.htd1_3, Tctd1_1:self.ctd1_1, Tctd1_2:self.ctd1_2, Tctd1_3:self.ctd1_3},
-        #                         allow_input_downcast = True, updates = scan_updates + scan_updates2, mode = 'FAST_RUN')
-        #bkwdfnRes = bkwdfn(egMatrix, egoutMatrix, \
-        #                            np.float32(np.asarray([0.0]*self.h3_length)), np.float32(np.asarray([0.0]*self.h2_length)), np.float32(np.asarray([0.0]*self.h1_length)), \
-        #                            np.float32(np.asarray([0.0]*self.h3_length)), np.float32(np.asarray([0.0]*self.h2_length)), np.float32(np.asarray([0.0]*self.h1_length)), \
-        #                            np.float32(np.asarray([0.0]*self.h3_length)), np.float32(np.asarray([0.0]*self.h2_length)), np.float32(np.asarray([0.0]*self.h1_length)), \
-        #                            np.float32(np.asarray([0.0]*self.h3_length)), np.float32(np.asarray([0.0]*self.h2_length)), np.float32(np.asarray([0.0]*self.h1_length)) )
-        #                            
-        #print('D_YtAcc = ' + str(np.asarray(bkwdfnRes[0]))); print('D_It_3Acc = ' + str(np.asarray(bkwdfnRes[1]))); print('D_It_2Acc = ' + str(np.asarray(bkwdfnRes[2])))
-        #print('D_It_1Acc = ' + str(np.asarray(bkwdfnRes[3]))); print('D_Ft_3Acc = ' + str(np.asarray(bkwdfnRes[4]))); print('D_Ft_2Acc = ' + str(np.asarray(bkwdfnRes[5])))
-        #print('D_Ft_1Acc = ' + str(np.asarray(bkwdfnRes[6]))); print('D_Ct_3Acc = ' + str(np.asarray(bkwdfnRes[7]))); print('D_Ct_2Acc = ' + str(np.asarray(bkwdfnRes[8])))
-        #print('D_Ct_1Acc = ' + str(np.asarray(bkwdfnRes[9]))); print('D_Ot_3Acc = ' + str(np.asarray(bkwdfnRes[10]))); print('D_Ot_2Acc = ' + str(np.asarray(bkwdfnRes[11])))
-        #print('D_Ot_1Acc = ' + str(np.asarray(bkwdfnRes[12]))); print('D_ct_3Acc = ' + str(np.asarray(bkwdfnRes[13]))); print('D_ct_2Acc = ' + str(np.asarray(bkwdfnRes[14])))
-        #print('D_ct_1Acc = ' + str(np.asarray(bkwdfnRes[15]))); print('D_ot_3Acc = ' + str(np.asarray(bkwdfnRes[16]))); print('D_ot_2Acc = ' + str(np.asarray(bkwdfnRes[17])))
-        #print('D_ot_1Acc = ' + str(np.asarray(bkwdfnRes[18]))); print('D_ft_3Acc = ' + str(np.asarray(bkwdfnRes[19]))); print('D_ft_2Acc = ' + str(np.asarray(bkwdfnRes[20])))
-        #print('D_ft_1Acc = ' + str(np.asarray(bkwdfnRes[21]))); print('D_it_3Acc = ' + str(np.asarray(bkwdfnRes[22]))); print('D_it_2Acc = ' + str(np.asarray(bkwdfnRes[23])))
-        #print('D_it_1Acc = ' + str(np.asarray(bkwdfnRes[24])))
+
         
         
-	#compile theano function for gradient updates based on bk prop and RMSprop gradient calculations:       
+        #compile theano function for gradient updates based on bk prop and RMSprop gradient calculations:       
         gradfn = theano.function(inputs=[T_egMB, T_egOutMB],
                                  outputs = [DWxi1, DWxi2, DWxi3, DWxf1, DWxf2, DWxf3, DWxo1, DWxo2, DWxo3, DWxc1, DWxc2, DWxc3,
                                             DWhi1, DWhi2, DWhi3, DWhf1, DWhf2, DWhf3, DWho1, DWho2, DWho3, DWhc1, DWhc2, DWhc3,
@@ -1105,72 +1058,100 @@ class RNN4Music:
                                             DWci1, DWci2, DWci3, DWcf1, DWcf2, DWcf3, DWco1, DWco2, DWco3, KLAccR,
                                             Dbi1, Dbi2, Dbi3, Dbf1, Dbf2, Dbf3, Dbc1, Dbc2, Dbc3, Dbo1, Dbo2, Dbo3, Dby,
                                             Th1AccR, Th2AccR, Th3AccR, Tc1AccR, Tc2AccR, Tc3AccR],
-                                 allow_input_downcast = True, updates = scan_updatesR + scan_updates2R + scan_updates3R + \
-                                 [(self.Wxi_1, self.Wxi_1 - self.R1*DWxi1), (self.Wxi_2, self.Wxi_2 - self.R2*DWxi2), (self.Wxi_3, self.Wxi_3 - self.R3*DWxi3),
-                                  (self.Wxf_1, self.Wxf_1 - self.R1*DWxf1), (self.Wxf_2, self.Wxf_2 - self.R2*DWxf2), (self.Wxf_3, self.Wxf_3 - self.R3*DWxf3),
-                                  (self.Wxo_1, self.Wxo_1 - self.R1*DWxo1), (self.Wxo_2, self.Wxo_2 - self.R2*DWxo2), (self.Wxo_3, self.Wxo_3 - self.R3*DWxo3),
-                                  (self.Wxc_1, self.Wxc_1 - self.R1*DWxc1), (self.Wxc_2, self.Wxc_2 - self.R2*DWxc2), (self.Wxc_3, self.Wxc_3 - self.R3*DWxc3),
-                                  (self.Whi_1, self.Whi_1 - self.R1*DWhi1), (self.Whi_2, self.Whi_2 - self.R2*DWhi2), (self.Whi_3, self.Whi_3 - self.R3*DWhi3),
-                                  (self.Whf_1, self.Whf_1 - self.R1*DWhf1), (self.Whf_2, self.Whf_2 - self.R2*DWhf2), (self.Whf_3, self.Whf_3 - self.R3*DWhf3),
-                                  (self.Who_1, self.Who_1 - self.R1*DWho1), (self.Who_2, self.Who_2 - self.R2*DWho2), (self.Who_3, self.Who_3 - self.R3*DWho3),
-                                  (self.Whc_1, self.Whc_1 - self.R1*DWhc1), (self.Whc_2, self.Whc_2 - self.R2*DWhc2), (self.Whc_3, self.Whc_3 - self.R3*DWhc3),
-                                  (self.Why_1, self.Why_1 - self.R1*DWhy1), (self.Why_2, self.Why_2 - self.R2*DWhy2), (self.Why_3, self.Why_3 - self.R3*DWhy3),
-                                  (self.Wxj_2, self.Wxj_2 - self.R2*DWxj2), (self.Wxj_3, self.Wxj_3 - self.R3*DWxj3),
-                                  (self.Wfj_2, self.Wfj_2 - self.R2*DWfj2), (self.Wfj_3, self.Wfj_3 - self.R3*DWfj3),
-                                  (self.Wcj_2, self.Wcj_2 - self.R2*DWcj2), (self.Wcj_3, self.Wcj_3 - self.R3*DWcj3),
-                                  (self.Woj_2, self.Woj_2 - self.R2*DWoj2), (self.Woj_3, self.Woj_3 - self.R3*DWoj3),
-                                  (self.Wci_1, self.Wci_1 - self.R1*DWci1), (self.Wci_2, self.Wci_2 - self.R2*DWci2), (self.Wci_3, self.Wci_3 - self.R3*DWci3),
-                                  (self.Wcf_1, self.Wcf_1 - self.R1*DWcf1), (self.Wcf_2, self.Wcf_2 - self.R2*DWcf2), (self.Wcf_3, self.Wcf_3 - self.R3*DWcf3),
-                                  (self.Wco_1, self.Wco_1 - self.R1*DWco1), (self.Wco_2, self.Wco_2 - self.R2*DWco2), (self.Wco_3, self.Wco_3 - self.R3*DWco3),
-                                  (self.loss, T.sum(KLAccR, dtype=theano.config.floatX, acc_dtype=theano.config.floatX)),
-                                  (self.bi_1, self.bi_1 - self.R1*Dbi1), (self.bi_2, self.bi_2 - self.R2*Dbi2), (self.bi_3, self.bi_3 - self.R3*Dbi3),
-                                  (self.bf_1, self.bf_1 - self.R1*Dbf1), (self.bf_2, self.bf_2 - self.R2*Dbf2), (self.bf_3, self.bf_3 - self.R3*Dbf3),
-                                  (self.bc_1, self.bc_1 - self.R1*Dbc1), (self.bc_2, self.bc_2 - self.R2*Dbc2), (self.bc_3, self.bc_3 - self.R3*Dbc3),
-                                  (self.bo_1, self.bo_1 - self.R1*Dbo1), (self.bo_2, self.bo_2 - self.R2*Dbo2), (self.bo_3, self.bo_3 - self.R3*Dbo3),
-                                  (self.by, self.by - self.Rout*Dby),
-                                  (self.DWxi1p, Wxi1AccR), (self.DWxi2p, DWxi2), (self.DWxi3p, DWxi3),
-                                  (self.DWxf1p, DWxf1), (self.DWxf2p, DWxf2), (self.DWxf3p, DWxf3),
-                                  (self.DWxo1p, DWxo1), (self.DWxo2p, DWxo2), (self.DWxo3p, DWxo3),
-                                  (self.DWxc1p, DWxc1), (self.DWxc2p, DWxc2), (self.DWxc3p, DWxc3),
-                                  (self.DWhi1p, Whi1AccR), (self.DWhi2p, DWhi2), (self.DWhi3p, DWhi3),
-                                  (self.DWhf1p, DWhf1), (self.DWhf2p, DWhf2), (self.DWhf3p, DWhf3),
-                                  (self.DWho1p, DWho1), (self.DWho2p, DWho2), (self.DWho3p, DWho3),
-                                  (self.DWhc1p, DWhc1), (self.DWhc2p, DWhc2), (self.DWhc3p, DWhc3),
-                                  (self.DWhy1p, DWhy1), (self.DWhy2p, DWhy2), (self.DWhy3p, DWhy3),
-                                  (self.DWxj2p, DWxj2), (self.DWxj3p, DWxj3),
-                                  (self.DWfj2p, DWfj2), (self.DWfj3p, DWfj3),
-                                  (self.DWcj2p, DWcj2), (self.DWcj3p, DWcj3),
-                                  (self.DWoj2p, DWoj2), (self.DWoj3p, DWoj3),
-                                  (self.DWci1p, DWci1), (self.DWci2p, DWci2), (self.DWci3p, DWci3),
-                                  (self.DWcf1p, DWcf1), (self.DWcf2p, DWcf2), (self.DWcf3p, DWcf3),
-                                  (self.DWco1p, DWco1), (self.DWco2p, DWco2), (self.DWco3p, DWco3),
-                                  (self.Dbi1p, Dbi1), (self.Dbi2p, Dbi2), (self.Dbi3p, Dbi3),
-                                  (self.Dbf1p, Dbf1), (self.Dbf2p, Dbf2), (self.Dbf3p, Dbf3),
-                                  (self.Dbc1p, Dbc1), (self.Dbc2p, Dbc2), (self.Dbc3p, Dbc3),
-                                  (self.Dbo1p, Dbo1), (self.Dbo2p, Dbo2), (self.Dbo3p, Dbo3),
-                                  (self.Dbyp, Dby), 
-                                  (self.ctd1_1, Tc1AccR), (self.ctd1_2, Tc2AccR), (self.ctd1_3, Tc3AccR),
-                                  (self.htd1_1, Th1AccR), (self.htd1_2, Th2AccR), (self.htd1_3, Th3AccR)
-                                  ], 
-                                 mode = 'FAST_RUN')
+                                 allow_input_downcast = True, #updates = scan_updatesR + scan_updates2R + scan_updates3R + \
+                                 updates = [(self.Wxi_1, self.Wxi_1 - self.R1*DWxi1), (self.Wxi_2, self.Wxi_2 - self.R2*DWxi2), (self.Wxi_3, self.Wxi_3 - self.R3*DWxi3),
+                                        (self.Wxf_1, self.Wxf_1 - self.R1*DWxf1), (self.Wxf_2, self.Wxf_2 - self.R2*DWxf2), (self.Wxf_3, self.Wxf_3 - self.R3*DWxf3),
+                                        (self.Wxo_1, self.Wxo_1 - self.R1*DWxo1), (self.Wxo_2, self.Wxo_2 - self.R2*DWxo2), (self.Wxo_3, self.Wxo_3 - self.R3*DWxo3),
+                                        (self.Wxc_1, self.Wxc_1 - self.R1*DWxc1), (self.Wxc_2, self.Wxc_2 - self.R2*DWxc2), (self.Wxc_3, self.Wxc_3 - self.R3*DWxc3),
+                                        (self.Whi_1, self.Whi_1 - self.R1*DWhi1), (self.Whi_2, self.Whi_2 - self.R2*DWhi2), (self.Whi_3, self.Whi_3 - self.R3*DWhi3),
+                                        (self.Whf_1, self.Whf_1 - self.R1*DWhf1), (self.Whf_2, self.Whf_2 - self.R2*DWhf2), (self.Whf_3, self.Whf_3 - self.R3*DWhf3),
+                                        (self.Who_1, self.Who_1 - self.R1*DWho1), (self.Who_2, self.Who_2 - self.R2*DWho2), (self.Who_3, self.Who_3 - self.R3*DWho3),
+                                        (self.Whc_1, self.Whc_1 - self.R1*DWhc1), (self.Whc_2, self.Whc_2 - self.R2*DWhc2), (self.Whc_3, self.Whc_3 - self.R3*DWhc3),
+                                        (self.Why_1, self.Why_1 - self.R1*DWhy1), (self.Why_2, self.Why_2 - self.R2*DWhy2), (self.Why_3, self.Why_3 - self.R3*DWhy3),
+                                        (self.Wxj_2, self.Wxj_2 - self.R2*DWxj2), (self.Wxj_3, self.Wxj_3 - self.R3*DWxj3),
+                                        (self.Wfj_2, self.Wfj_2 - self.R2*DWfj2), (self.Wfj_3, self.Wfj_3 - self.R3*DWfj3),
+                                        (self.Wcj_2, self.Wcj_2 - self.R2*DWcj2), (self.Wcj_3, self.Wcj_3 - self.R3*DWcj3),
+                                        (self.Woj_2, self.Woj_2 - self.R2*DWoj2), (self.Woj_3, self.Woj_3 - self.R3*DWoj3),
+                                        (self.Wci_1, self.Wci_1 - self.R1*DWci1), (self.Wci_2, self.Wci_2 - self.R2*DWci2), (self.Wci_3, self.Wci_3 - self.R3*DWci3),
+                                        (self.Wcf_1, self.Wcf_1 - self.R1*DWcf1), (self.Wcf_2, self.Wcf_2 - self.R2*DWcf2), (self.Wcf_3, self.Wcf_3 - self.R3*DWcf3),
+                                        (self.Wco_1, self.Wco_1 - self.R1*DWco1), (self.Wco_2, self.Wco_2 - self.R2*DWco2), (self.Wco_3, self.Wco_3 - self.R3*DWco3),
+                                        (self.loss, self.mean(KLAccR)),
+                                        (self.bi_1, self.bi_1 - self.R1*Dbi1), (self.bi_2, self.bi_2 - self.R2*Dbi2), (self.bi_3, self.bi_3 - self.R3*Dbi3),
+                                        (self.bf_1, self.bf_1 - self.R1*Dbf1), (self.bf_2, self.bf_2 - self.R2*Dbf2), (self.bf_3, self.bf_3 - self.R3*Dbf3),
+                                        (self.bc_1, self.bc_1 - self.R1*Dbc1), (self.bc_2, self.bc_2 - self.R2*Dbc2), (self.bc_3, self.bc_3 - self.R3*Dbc3),
+                                        (self.bo_1, self.bo_1 - self.R1*Dbo1), (self.bo_2, self.bo_2 - self.R2*Dbo2), (self.bo_3, self.bo_3 - self.R3*Dbo3),
+                                        (self.by, self.by - self.Rout*Dby),
+                                        (self.DWxi1p, DWxi1), (self.DWxi2p, DWxi2), (self.DWxi3p, DWxi3),
+                                        (self.DWxf1p, DWxf1), (self.DWxf2p, DWxf2), (self.DWxf3p, DWxf3),
+                                        (self.DWxo1p, DWxo1), (self.DWxo2p, DWxo2), (self.DWxo3p, DWxo3),
+                                        (self.DWxc1p, DWxc1), (self.DWxc2p, DWxc2), (self.DWxc3p, DWxc3),
+                                        (self.DWhi1p, DWhi1), (self.DWhi2p, DWhi2), (self.DWhi3p, DWhi3),
+                                        (self.DWhf1p, DWhf1), (self.DWhf2p, DWhf2), (self.DWhf3p, DWhf3),
+                                        (self.DWho1p, DWho1), (self.DWho2p, DWho2), (self.DWho3p, DWho3),
+                                        (self.DWhc1p, DWhc1), (self.DWhc2p, DWhc2), (self.DWhc3p, DWhc3),
+                                        (self.DWhy1p, DWhy1), (self.DWhy2p, DWhy2), (self.DWhy3p, DWhy3),
+                                        (self.DWxj2p, DWxj2), (self.DWxj3p, DWxj3),
+                                        (self.DWfj2p, DWfj2), (self.DWfj3p, DWfj3),
+                                        (self.DWcj2p, DWcj2), (self.DWcj3p, DWcj3),
+                                        (self.DWoj2p, DWoj2), (self.DWoj3p, DWoj3),
+                                        (self.DWci1p, DWci1), (self.DWci2p, DWci2), (self.DWci3p, DWci3),
+                                        (self.DWcf1p, DWcf1), (self.DWcf2p, DWcf2), (self.DWcf3p, DWcf3),
+                                        (self.DWco1p, DWco1), (self.DWco2p, DWco2), (self.DWco3p, DWco3),
+                                        (self.Dbi1p, Dbi1), (self.Dbi2p, Dbi2), (self.Dbi3p, Dbi3),
+                                        (self.Dbf1p, Dbf1), (self.Dbf2p, Dbf2), (self.Dbf3p, Dbf3),
+                                        (self.Dbc1p, Dbc1), (self.Dbc2p, Dbc2), (self.Dbc3p, Dbc3),
+                                        (self.Dbo1p, Dbo1), (self.Dbo2p, Dbo2), (self.Dbo3p, Dbo3),
+                                        (self.Dbyp, Dby), 
+                                        (self.ctd1_1, Tc1AccR[-1]), (self.ctd1_2, Tc2AccR[-1]), (self.ctd1_3, Tc3AccR[-1]),
+                                        (self.htd1_1, Th1AccR[-1]), (self.htd1_2, Th2AccR[-1]), (self.htd1_3, Th3AccR[-1])
+                                        ], mode = 'FAST_RUN')
         
-	#useful prints function structure to file:
+	    #useful prints function structure to file:
         #theano.printing.pydotprint(gradfn)    
-    
-    
-        prevLoss = 0
-        MBindex = np.arange(0, len(egMatrix), sizeOfMiniBatch)#len(egMatrix)#start, end, step
-        print("minibatch split: " + str(MBindex))
-        pretime=time.time()
-        for j in xrange(noOfEpoch):
-            #np.random.shuffle(MBindex)
-            #self.resetStates()
-            #self.resetRMSgrads()
-            #print('epoch ' + str(j))
-            for k in MBindex:
-                #self.resetStates()                
-                returns = gradfn(egMatrix[k:k+sizeOfMiniBatch], egoutMatrix[k:k+sizeOfMiniBatch])
-                print("time taken = " + str(time.time()-pretime) + ", loss = " + str(np.asarray(self.loss.eval())) + ", minibatch " + str(k) + ", epoch " + str(j))
+
+        dataLength = [np.array(dataset[n]).shape[0] for n in np.arange(np.array(dataset).shape[0])]
+        tuneLength = lengthOfMB #np.max(dataLength)
+        tuneIndex = np.arange(np.array(dataset).shape[0])
+
+        print("-------------------------------------------")
+        print("no. of epochs/MB = " + str(noOfEpochPerMB))
+        print("size of mini-batch = " + str(sizeOfMiniBatch))
+        print("no. of epochs of MB = " + str(noOfEpoch))
+        print("length of each tune in MB = " +str(tuneLength))
+        print("-------------------------------------------")
+
+
+        for n in np.arange(noOfEpoch):
+                shuffle(tuneIndex)
+                mbDataset = []
+                print("Epoch: " + str(n))
+                print("tunes in mini-batch: " + str(tuneIndex[0:sizeOfMiniBatch]))
+                for n in np.arange(0,sizeOfMiniBatch,1): #np.array(dataset).shape[0],1):
+                        #make sure all tunes are same length as longest tune by replicating itselves so the MB mean gradient is fair!
+                        if (dataLength[tuneIndex[n]] < lengthOfMB) :
+                            mbDataset.append(np.concatenate((((dataset[tuneIndex[n]].tolist())*int(tuneLength/(dataLength[tuneIndex[n]]))), dataset[tuneIndex[n]][0:(tuneLength%dataLength[tuneIndex[n]])])))
+                        else:
+                            mbDataset.append(dataset[tuneIndex[n]][0:lengthOfMB])
+                for m in np.arange(noOfEpochPerMB):
+                        pretime = time.time()
+                        returns = gradfn(np.float32(np.array(mbDataset)[0:sizeOfMiniBatch,0:tuneLength-2,:]), np.float32(np.array(mbDataset)[0:sizeOfMiniBatch,1:tuneLength-1,:])) 
+                        print("         time taken = " + str(time.time()-pretime) + ", loss = " + str(np.asarray(self.loss.eval())))
+
+
+
+        #prevLoss = 0
+        #MBindex = np.arange(0, len(egMatrix), sizeOfMiniBatch)#len(egMatrix)#start, end, step
+        #print("minibatch split: " + str(MBindex))
+        #pretime=time.time()
+        #for j in xrange(noOfEpoch):
+        #    #np.random.shuffle(MBindex)
+        #    #self.resetStates()
+        #    #self.resetRMSgrads()
+        #    #print('epoch ' + str(j))
+        #    for k in MBindex:
+        #        #self.resetStates()                
+        #        returns = gradfn(egMatrix[k:k+sizeOfMiniBatch], egoutMatrix[k:k+sizeOfMiniBatch])
+        #        print("time taken = " + str(time.time()-pretime) + ", loss = " + str(np.asarray(self.loss.eval())) + ", minibatch " + str(k) + ", epoch " + str(j))
                 
     
     def printDerivatives(self):
@@ -1205,9 +1186,9 @@ class RNN4Music:
         
         
     def printWeights(self):
-	'''
-	prints all weight matrixes
-	'''
+        '''
+        prints all weight matrixes
+        '''
         
         print('Wxi1=' + str(np.array(self.Wxi_1.eval()))); print('Wxi2=' + str(np.array(self.Wxi_2.eval()))); print('Wxi3=' + str(np.array(self.Wxi_3.eval())));
         print('Wxf1=' + str(np.array(self.Wxf_1.eval()))); print('Wxf2=' + str(np.array(self.Wxf_2.eval()))); print('Wxf3=' + str(np.array(self.Wxf_3.eval())));
@@ -1235,15 +1216,22 @@ class RNN4Music:
         print('by=' + str(np.array(self.by.eval())));
 
 
+    def setNewRates(self, R1, R2, R3, Rout):
+        self.R1 = np.float32(R1)
+        self.R2 = np.float32(R2)
+        self.R3 = np.float32(R3)
+        self.Rout = np.float32(Rout)
+
+
     def genMusic(self, startVectors, noOfSamps):
         '''
-	gemerates music by feeding output of network back into input of network at next time step
-	example is ran on the network before music is generated with the feedback
+        gemerates music by feeding output of network back into input of network at next time step
+        example is ran on the network before music is generated with the feedback
 
-	arguments:
-		startVectors (np.array): each row of startVectors represent a time step. the midi notes are assigned across the columns i.e. startVectors[#time][#midi note]
+        arguments:
+            startVectors (np.array): each row of startVectors represent a time step. the midi notes are assigned across the columns i.e. startVectors[#time][#midi note]
 
-        	noOfSamps (int): number of samples (time steps) to generate after running through the startVector example
+            noOfSamps (int): number of samples (time steps) to generate after running through the startVector example
         '''
                 
         T_startVectors = T.matrix(name='T_startVectors', dtype=theano.config.floatX)
@@ -1284,48 +1272,23 @@ class RNN4Music:
 
         
 def main():
-    sizeOfMiniBatch = 2000
-    noOfEpoch = 10
-    path = './Piano-midi.de/train'
+    sizeOfMiniBatch = 10 #how many tunes per miniBatch
+    noOfEpoch = 100 
+    noOfEpochPerMB = 10
+    lengthOfMB = 120
+    path = './Piano-midi.de/train-individual/hpps'
+    #path = './Piano-midi.de/train'
     files = os.listdir(path)
     assert len(files) > 0, 'Training set is empty!' \
                                ' (did you download the data files?)'
     #pitch range is from 21 to 109
     dataset = [midiread((path + "/" + f), (21, 109),0.3).piano_roll.astype(theano.config.floatX) for f in files]
-    #to check size, use print(str(np.array(dataset).shape)) and print(str(np.array(dataset[data#]).shape))
-    #np.transpose(dataset) gives you dataset[data stream#, 0-87][sample, 0-575][onehot encoded in a 88 sized vector, 0-87]
-    print("np.array(dataset).shape = " + str(np.array(dataset).shape))
-    print("np.array(dataset[1]).shape = " + str(np.array(dataset[1]).shape))
-    print("np.array(dataset[40]).shape = " + str(np.array(dataset[40]).shape))
-    print("np.array(dataset[40]).shape[0] = " + str(np.array(dataset[40]).shape[0]))
-    print("np.transpose(np.array(dataset[1])).shape = " + str(np.transpose(np.array(dataset[1])).shape))
-  
-    #print(str(dataset[40][400][87]))
-    #print(str([dataset[40][n][87] for n in np.arange(0,601,1)])) #np.arnage(start, stop, step), dataset[40][400:405][87] does not work like matlab does... 
-    #LSTM crashes when input have "blanks" i.e. non of the 88 possible notes are "1.0"
-    #we detect these blank notes and represent it with note #0 :
     
-    #plt.show()
-    
-    
-    for n in np.arange(0,np.array(dataset[3]).shape[0],1):
-        if np.sum(dataset[3][n], dtype=theano.config.floatX) == 0 :
-            dataset[3][n][0] = np.float32(1.0)
-    for n in np.arange(0,np.array(dataset[8]).shape[0],1):
-        if np.sum(dataset[8][n], dtype=theano.config.floatX) == 0 :
-            dataset[8][n][0] = np.float32(1.0)
-                
-    print("maximum of dataset[3] = " + str(np.max(dataset[3])))
-    print("minimum of dataset[3] = " + str(np.min(dataset[3])))
-  
-    #shifting input to zero centre does not work as crossing zero blows things up...
-
-
-    #check number of notes for each tune:
-       
+                  
+    #check number of notes for each tune:       
     print(str([np.array(dataset[n]).shape[0] for n in np.arange(np.array(dataset).shape[0])]))
 
-    dataLength = [np.array(dataset[n]).shape[0] for n in np.arange(np.array(dataset).shape[0])]
+
 
     # set "silent" to zero in 1-hot format
     for k in np.arange(np.array(dataset).shape[0]):
@@ -1338,64 +1301,42 @@ def main():
     #    for n in np.arange(0,np.array(dataset[k]).shape[0],1):
     #        dataset[k][n][0] = np.float32(2.0)*cp.deepcopy(dataset[k][n][0]) - np.float32(1.0)
 
-    myRNN4Music = RNN4Music(h1_length=120, h2_length=120, h3_length=120, io_length=88, R1=0.01, R2=0.01, R3=0.01, Rout=0.01) #1000 (few million parameters)=>2.4s, 500=>0.8s, 2000=>9s, 2500=> out or ram! might need to clear and try again...
-    #myRNN4Music.loadParameters('examples400_120') #this one works when you gen without softmax, all trained with* softmax though...strange... 
-    #myRNN4Music.loadParameters('examples400_120_noSoftmax')
-    #myRNN4Music.loadParameters('examples400_120_noSoftmax_RNN7_386plus')#('examples400_120_noSoftmax_RNN7')
-    #myRNN4Music.loadParameters('examples400_120_noSoftmax_RNN7_596plus')
-    #myRNN4Music.loadParameters('examples400_120_noSoftmax_RNN7_676plus')
+    myRNN4Music = RNN4Music(h1_length=176, h2_length=176, h3_length=176, io_length=88, R1=np.float32(0.0001), R2=np.float32(0.0001), R3=np.float32(0.0001), Rout=np.float32(0.0001)) 
+    
+    #myRNN4Music.loadParameters('528_264_176_0_0001_sqr_jigs')
     
 
-    #myRNN4Music.loadParameters('fixedTrial_xEnError_182')    
+    #print("dataset[0].shape = " + str(dataset[0].shape))
 
-    #examples400_120_noSoftmax_RNN7_676_r2plus sounds good on generating [100]
-    #200 examples over 10 hrs
-    for n in np.arange(0,np.array(dataset).shape[0],1): #np.arange(np.array(dataset).shape[0]):
-         print('training with data[' + str(n) + ']')
-  	 myRNN4Music.resetStates()
-         myRNN4Music.resetRMSgrads()   
-         myRNN4Music.train(np.float32(dataset[n][0:dataLength[n]-2]), np.float32(dataset[n][1:dataLength[n]-1]), noOfEpoch, sizeOfMiniBatch) 
-         myRNN4Music.saveParameters('noMB')
-         #myRNN4Music.printDerivatives()
-         #myRNN4Music.printWeights()
-#    myRNN4Music.saveParameters('fixedTrial')
-#    myRNN4Music.resetStates()
+    #myRNN4Music.loadParameters('176_176_176_0_0001_sqr_hpps_300')
 
-## generate tunes with leading samples for all trained examples:
-#    baseSample = 2
-#    for baseSample in np.arange(0,np.array(dataset).shape[0],1):
-#	myRNN4Music.resetStates()    
-#	generated = myRNN4Music.genMusic(np.float32(dataset[baseSample][0:2]), 500)
-#    	#print('generated: ' + str(np.array(generated)))
-#    	print('generated tune ' + str(baseSample))
-#	#plt.figure(0)
-#    	#plt.imshow(np.transpose(dataset[baseSample][0:dataLength[baseSample]]), origin='lower', aspect='auto',
-#        #                     interpolation='nearest', cmap=pylab.cm.gray_r)
-#    
-#    	#plt.figure(1)
-#    	#plt.imshow(np.transpose(np.array(generated[0][0:dataLength[baseSample]])), origin='lower', aspect='auto',
-#        #                     interpolation='nearest', cmap=pylab.cm.gray_r)
-#    	#plt.show()
-#    	
-#    
+    myRNN4Music.train(dataset, noOfEpochPerMB, noOfEpoch, sizeOfMiniBatch, lengthOfMB)
+    myRNN4Music.saveParameters('176_176_176_0_0001_sqr_hpps_100')
+    #myRNN4Music.train(dataset, noOfEpochPerMB, noOfEpoch, sizeOfMiniBatch)
+    #myRNN4Music.saveParameters('176_176_176_0_0001_sqr_hpps_300')
+    #myRNN4Music.train(dataset, noOfEpochPerMB, noOfEpoch, sizeOfMiniBatch)
+    #myRNN4Music.saveParameters('176_176_176_0_0001_sqr_hpps_400')
+    
 
 
-    baseSample = 303
-    exampleLength = 50
+
+
+    baseSample = 1
+    exampleLength = 20
     myRNN4Music.resetStates()
     generatedTuneProb = myRNN4Music.genMusic(np.float32(dataset[baseSample][0:exampleLength]), 2000)
-    midiwrite('fixedtrial_' + str(baseSample) + '182xEnError.mid', generatedTuneProb[0], (21, 109),0.3)
+    midiwrite('176_176_176_0_0001_sqr_hpps' + str(baseSample) + '.mid', generatedTuneProb[0], (21, 109),0.3)
     #generatedTuneProb[0] is the tune, generatedTuneProb[1] is the probability at each iteration
     plt.figure(0)
     plt.imshow(np.array(generatedTuneProb[1][0:20,25:65]), origin = 'lower', extent=[25,65,0,20], aspect=1,
-    				interpolation = 'nearest', cmap='gist_stern_r')
+                    interpolation = 'nearest', cmap='gist_stern_r')
     plt.title('probability of generated midi note piano-roll')
     plt.xlabel('midi note')
     plt.ylabel('sample number (time steps)')
     plt.colorbar()
 
     plt.figure(1)
-    plt.imshow(np.transpose(dataset[baseSample][0:dataLength[baseSample]]), origin='lower', aspect='auto',
+    plt.imshow(np.transpose(dataset[baseSample]), origin='lower', aspect='auto',
                              interpolation='nearest', cmap=pylab.cm.gray_r)
     plt.colorbar()
     plt.title('original piano-roll')
@@ -1410,11 +1351,6 @@ def main():
     plt.xlabel('sample number (time steps)')
     plt.ylabel('midi note')
     plt.show()
-
-
-    
-    #print(str(generatedTuneProb[1][0:5]))
-    #myRNN4Music.printWeights()
     
 
     
