@@ -501,46 +501,46 @@ class RNN4Music:
                      ftp1_3, ftp1_2, ftp1_1, itp1_3, itp1_2, itp1_1,
                      it_3, it_2, it_1, ot_3, ot_2, ot_1, ct_3, ct_2, ct_1,
                      D_ctp1_3, D_ctp1_2, D_ctp1_1, D_otp1_3, D_otp1_2, D_otp1_1, D_ftp1_3, D_ftp1_2, D_ftp1_1, D_itp1_3, D_itp1_2, D_itp1_1): 
-	'''
-	back propagation computation of error signals of outputs, outputs of gates and memory states at time t given same signals and error signals at time t+1
+        '''
+        back propagation computation of error signals of outputs, outputs of gates and memory states at time t given same signals and error signals at time t+1
 
-	arguments:
-		yt, Yt (theano tensor.vector): network output and network output before nonlinearity at time t
+        arguments:
+            yt, Yt (theano tensor.vector): network output and network output before nonlinearity at time t
 
-		Itp1_3, Itp1_2, Itp1_1 (theano tensor.vector): I3(t+1), I2(t+1), I1(t+1), input gate outputs across three layers before nonlinearity at t+1
-		Ftp1_3, Ftp1_2, Ftp1_1 (theano tensor.vector): F3(t+1), F2(t+1), F1(t+1), forget gate outputs across three layers before nonlinearity at t+1
-		Otp1_3, Otp1_2, Otp1_1 (theano tensor.vector): O3(t+1), O2(t+1), O1(t+1), output gate outputs across three layers before nonlinearity at t+1
+            Itp1_3, Itp1_2, Itp1_1 (theano tensor.vector): I3(t+1), I2(t+1), I1(t+1), input gate outputs across three layers before nonlinearity at t+1
+            Ftp1_3, Ftp1_2, Ftp1_1 (theano tensor.vector): F3(t+1), F2(t+1), F1(t+1), forget gate outputs across three layers before nonlinearity at t+1
+            Otp1_3, Otp1_2, Otp1_1 (theano tensor.vector): O3(t+1), O2(t+1), O1(t+1), output gate outputs across three layers before nonlinearity at t+1
 
-		ctd1_3, ctd1_2, ctd1_1 (theano tensor.vector): c3(t-1), c2(t-1), c1(t-1), memory states across three layers before nonlinearity at t-1
+            ctd1_3, ctd1_2, ctd1_1 (theano tensor.vector): c3(t-1), c2(t-1), c1(t-1), memory states across three layers before nonlinearity at t-1
 
-		ftp1_3, ftp1_2, ftp1_1 (theano tensor.vector): f3(t+1), f2(t+1), f1(t+1), forget gate outputs across three layers at t+1
-		itp1_3, itp1_2, itp1_1 (theano tensor.vector): i3(t+1), i2(t+1), i1(t+1), input gate outputs across three layers at t+1
+            ftp1_3, ftp1_2, ftp1_1 (theano tensor.vector): f3(t+1), f2(t+1), f1(t+1), forget gate outputs across three layers at t+1
+            itp1_3, itp1_2, itp1_1 (theano tensor.vector): i3(t+1), i2(t+1), i1(t+1), input gate outputs across three layers at t+1
 
-		it_3, it_2, it_1 (theano tensor.vector): i3(t), i2(t), i1(t), input gate outputs across three layers at t
-		ot_3, ot_2, ot_1 (theano tensor.vector): o3(t), o2(t), o1(t), output gate outputs across three layers at t
+            it_3, it_2, it_1 (theano tensor.vector): i3(t), i2(t), i1(t), input gate outputs across three layers at t
+            ot_3, ot_2, ot_1 (theano tensor.vector): o3(t), o2(t), o1(t), output gate outputs across three layers at t
 
-		ct_3, ct_2, ct_1 (theano tensor.vector): c3(t), c2(t), c1(t), memory states across three layers at t
+            ct_3, ct_2, ct_1 (theano tensor.vector): c3(t), c2(t), c1(t), memory states across three layers at t
 
-		D_ctp1_3, D_ctp1_2, D_ctp1_1 (theano tensor.vector): c3'(t+1), c2'(t+1), c1'(t+1), memory states error across three layers at t+1
-		D_otp1_3, D_otp1_2, D_otp1_1 (theano tensor.vector): o3'(t+1), o2'(t+1), o1'(t+1), output gate error across three layers at t+1
-		D_ftp1_3, D_ftp1_2, D_ftp1_1 (theano tensor.vector): f3'(t+1), f2'(t+1), f1'(t+1), forget gate error across three layers at t+1 
-		D_itp1_3, D_itp1_2, D_itp1_1 (theano tensor.vector): i3'(t+1), i2'(t+1), i1'(t+1), input gate error across three layers at t+1 
-	
-	returns:
-		sqrCost (single element theano tensor.vector): cost function at time t
-		D_Yt (theano tensor.vector): Y'(t), network output error at time t
-		
-		D_It_3, D_It_2, D_It_1 (theano tensor.vector): I3'(t), I2'(t), I1'(t), error of input gate signal before nonlinearity across all layers at time t
-		D_Ft_3, D_Ft_2, D_Ft_1 (theano tensor.vector): F3'(t), F2'(t), F1'(t), error of forget gate signal before nonlinearity across all layers at time t
-		D_Ot_3, D_Ot_2, D_Ot_1 (theano tensor.vector): O3'(t), O2'(t), O1'(t), error of output gate signal before nonlinearity across all layers at time t
-		D_Ct_3, D_Ct_2, D_Ct_1 (theano tensor.vector): C3'(t), C2'(t), C1'(t), error of memory state before nonlinearity across all layers at time t
+            D_ctp1_3, D_ctp1_2, D_ctp1_1 (theano tensor.vector): c3'(t+1), c2'(t+1), c1'(t+1), memory states error across three layers at t+1
+            D_otp1_3, D_otp1_2, D_otp1_1 (theano tensor.vector): o3'(t+1), o2'(t+1), o1'(t+1), output gate error across three layers at t+1
+            D_ftp1_3, D_ftp1_2, D_ftp1_1 (theano tensor.vector): f3'(t+1), f2'(t+1), f1'(t+1), forget gate error across three layers at t+1 
+            D_itp1_3, D_itp1_2, D_itp1_1 (theano tensor.vector): i3'(t+1), i2'(t+1), i1'(t+1), input gate error across three layers at t+1 
+            
+        returns:
+            sqrCost (single element theano tensor.vector): cost function at time t
+            D_Yt (theano tensor.vector): Y'(t), network output error at time t
+            
+            D_It_3, D_It_2, D_It_1 (theano tensor.vector): I3'(t), I2'(t), I1'(t), error of input gate signal before nonlinearity across all layers at time t
+            D_Ft_3, D_Ft_2, D_Ft_1 (theano tensor.vector): F3'(t), F2'(t), F1'(t), error of forget gate signal before nonlinearity across all layers at time t
+            D_Ot_3, D_Ot_2, D_Ot_1 (theano tensor.vector): O3'(t), O2'(t), O1'(t), error of output gate signal before nonlinearity across all layers at time t
+            D_Ct_3, D_Ct_2, D_Ct_1 (theano tensor.vector): C3'(t), C2'(t), C1'(t), error of memory state before nonlinearity across all layers at time t
  
-                D_ct_3, D_ct_2, D_ct_1 (theano tensor.vector): c3'(t), c2'(t), c1'(t), error of memory state across all layers at time t
-		D_ot_3, D_ot_2, D_ot_1 (theano tensor.vector): o3'(t), o2'(t), o1'(t), error of output gate across all layers at time t
-		D_ft_3, D_ft_2, D_ft_1 (theano tensor.vector): f3'(t), f2'(t), f1'(t), error of forget gate across all layers at time t
-		D_it_3, D_it_2, D_it_1 (theano tensor.vector): i3'(t), i2'(t), i1'(t), error of input gate across all layers at time t
+            D_ct_3, D_ct_2, D_ct_1 (theano tensor.vector): c3'(t), c2'(t), c1'(t), error of memory state across all layers at time t
+            D_ot_3, D_ot_2, D_ot_1 (theano tensor.vector): o3'(t), o2'(t), o1'(t), error of output gate across all layers at time t
+            D_ft_3, D_ft_2, D_ft_1 (theano tensor.vector): f3'(t), f2'(t), f1'(t), error of forget gate across all layers at time t
+            D_it_3, D_it_2, D_it_1 (theano tensor.vector): i3'(t), i2'(t), i1'(t), error of input gate across all layers at time t
 
-	'''
+            '''
 
         #D_yt_temp = - (kt / T.maximum(self.epsilon, yt)) + ((np.float32(1.0) - kt) / (1-T.minimum((np.float32(1.0) - self.epsilon),yt))) #cross entropy cost function
         #D_yt = D_yt_temp #cross entropy square error
@@ -782,32 +782,32 @@ class RNN4Music:
                 Wci1sum, Wci2sum, Wci3sum, Wcf1sum, Wcf2sum, Wcf3sum, Wco1sum, Wco2sum, Wco3sum):
      
         '''
-	calculates accumulated gradient updates of weight parameters of the network, given previously accumulated gradient and error signals. 
+        calculates accumulated gradient updates of weight parameters of the network, given previously accumulated gradient and error signals. 
 
-	arguments:
-		inRow (theano tensor.vector): network input at time t
-		h1td1Row, h2td1Row, h3td1Row (theano tensor.vector): h1(t-1), h2(t-1), h3(t-1)
-		D_It_1Row, D_It_2Row, D_It_3Row (theano tensor.vector): I1'(t), I2'(t), I3'(t)  
-		D_Ft_1Row, D_Ft_2Row, D_Ft_3Row (theano tensor.vector): F1'(t), F2'(t), F3'(t)  
-		D_Ot_1Row, D_Ot_2Row, D_Ot_3Row (theano tensor.vector): O1'(t), O2'(t), O3'(t)  
-		D_Ct_1Row, D_Ct_2Row, D_Ct_3Row (theano tensor.vector): C1'(t), C2'(t), C3'(t)
-		D_YtRow (): Y'(t)
-		h1Row, h2Row, h3Row (): h1(t), h2(t), h3(t) 
-		c1td1Row, c2td1Row, c3td1Row (): c1(t-1), c2(t-1), c3(t-1)
-		c1Row, c2Row, c3Row (): c1(t), c2(t), c3(t)
+        arguments:
+            inRow (theano tensor.vector): network input at time t
+            h1td1Row, h2td1Row, h3td1Row (theano tensor.vector): h1(t-1), h2(t-1), h3(t-1)
+            D_It_1Row, D_It_2Row, D_It_3Row (theano tensor.vector): I1'(t), I2'(t), I3'(t)  
+            D_Ft_1Row, D_Ft_2Row, D_Ft_3Row (theano tensor.vector): F1'(t), F2'(t), F3'(t)  
+            D_Ot_1Row, D_Ot_2Row, D_Ot_3Row (theano tensor.vector): O1'(t), O2'(t), O3'(t)  
+            D_Ct_1Row, D_Ct_2Row, D_Ct_3Row (theano tensor.vector): C1'(t), C2'(t), C3'(t)
+            D_YtRow (): Y'(t)
+            h1Row, h2Row, h3Row (): h1(t), h2(t), h3(t) 
+            c1td1Row, c2td1Row, c3td1Row (): c1(t-1), c2(t-1), c3(t-1)
+            c1Row, c2Row, c3Row (): c1(t), c2(t), c3(t)
                 Wxi1sum, Wxi2sum, Wxi3sum, Wxf1sum, Wxf2sum, Wxf3sum, Wxo1sum, Wxo2sum, Wxo3sum, Wxc1sum, Wxc2sum, Wxc3sum, Whi1sum, Whi2sum, Whi3sum, 
-		Whf1sum, Whf2sum, Whf3sum, Who1sum, Who2sum, Who3sum, Whc1sum, Whc2sum, Whc3sum, Why1sum, Why2sum, Why3sum, Wxj2sum, Wxj3sum, Wfj2sum, 
-		Wfj3sum, Wcj2sum, Wcj3sum, Woj2sum, Woj3sum, Wci1sum, Wci2sum, Wci3sum, Wcf1sum, Wcf2sum, Wcf3sum, Wco1sum, Wco2sum, Wco3sum 
-			(theano tensor.matrix)	: Accumulated gradient of weights.
+        Whf1sum, Whf2sum, Whf3sum, Who1sum, Who2sum, Who3sum, Whc1sum, Whc2sum, Whc3sum, Why1sum, Why2sum, Why3sum, Wxj2sum, Wxj3sum, Wfj2sum, 
+        Wfj3sum, Wcj2sum, Wcj3sum, Woj2sum, Woj3sum, Wci1sum, Wci2sum, Wci3sum, Wcf1sum, Wcf2sum, Wcf3sum, Wco1sum, Wco2sum, Wco3sum 
+        (theano tensor.matrix)	: Accumulated gradient of weights.
 
-	returns:
-		Wxi1tmp, Wxi2tmp, Wxi3tmp, Wxf1tmp, Wxf2tmp, Wxf3tmp, Wxo1tmp, Wxo2tmp, Wxo3tmp, Wxc1tmp, Wxc2tmp, Wxc3tmp,
-                Whi1tmp, Whi2tmp, Whi3tmp, Whf1tmp, Whf2tmp, Whf3tmp, Who1tmp, Who2tmp, Who3tmp, Whc1tmp, Whc2tmp, Whc3tmp,
-                Why1tmp, Why2tmp, Why3tmp,
-                Wxj2tmp, Wxj3tmp, Wfj2tmp, Wfj3tmp, Wcj2tmp, Wcj3tmp, Woj2tmp, Woj3tmp,
-                Wci1tmp, Wci2tmp, Wci3tmp, Wcf1tmp, Wcf2tmp, Wcf3tmp, Wco1tmp, Wco2tmp, Wco3tmp (theano tensor.matrix): New accumulated gradient of weights
+        returns:
+            Wxi1tmp, Wxi2tmp, Wxi3tmp, Wxf1tmp, Wxf2tmp, Wxf3tmp, Wxo1tmp, Wxo2tmp, Wxo3tmp, Wxc1tmp, Wxc2tmp, Wxc3tmp,
+            Whi1tmp, Whi2tmp, Whi3tmp, Whf1tmp, Whf2tmp, Whf3tmp, Who1tmp, Who2tmp, Who3tmp, Whc1tmp, Whc2tmp, Whc3tmp,
+            Why1tmp, Why2tmp, Why3tmp,
+            Wxj2tmp, Wxj3tmp, Wfj2tmp, Wfj3tmp, Wcj2tmp, Wcj3tmp, Woj2tmp, Woj3tmp,
+            Wci1tmp, Wci2tmp, Wci3tmp, Wcf1tmp, Wcf2tmp, Wcf3tmp, Wco1tmp, Wco2tmp, Wco3tmp (theano tensor.matrix): New accumulated gradient of weights
  
-		
+
 
         '''
         Wxi1tmp = Wxi1sum + T.outer(D_It_1Row, inRow);  Wxi2tmp = Wxi2sum + T.outer(D_It_2Row, inRow);  Wxi3tmp = Wxi3sum + T.outer(D_It_3Row, inRow)
@@ -840,9 +840,9 @@ class RNN4Music:
                 Wci1tmp, Wci2tmp, Wci3tmp, Wcf1tmp, Wcf2tmp, Wcf3tmp, Wco1tmp, Wco2tmp, Wco3tmp]
         
     def resetStates(self):
-	'''
-	resets all memory states of the LSTM to zero
-	'''
+        '''
+        resets all memory states of the LSTM to zero
+        '''
  
         self.ctd1_1.set_value(np.float32(np.random.normal(np.float32(0.0),self.sigRand,self.h1_length)))
         self.ctd1_2.set_value(np.float32(np.random.normal(np.float32(0.0),self.sigRand,self.h2_length)))
@@ -880,7 +880,7 @@ class RNN4Music:
          Tit_1Acc, Tit_2Acc, Tit_3Acc, Tft_1Acc, Tft_2Acc, Tft_3Acc, Tot_1Acc, Tot_2Acc, Tot_3Acc,
          TIt_1Acc, TIt_2Acc, TIt_3Acc, TFt_1Acc, TFt_2Acc, TFt_3Acc, TOt_1Acc, TOt_2Acc, TOt_3Acc, TCt_1Acc, TCt_2Acc, TCt_3Acc], \
         scan_updates = theano.scan(fn=self.forwardPass, 
-                                    outputs_info=[None, None, h1v, h2v, h3v, h1v, h2v, h3v, 
+                                    outputs_info=[None, None, cp.deepcopy(h1v), cp.deepcopy(h2v), cp.deepcopy(h3v), cp.deepcopy(h1v), cp.deepcopy(h2v), cp.deepcopy(h3v), 
                                                   None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None], 
                                     sequences=[T_egMB]) 
         
@@ -1059,7 +1059,7 @@ class RNN4Music:
                                             Dbi1, Dbi2, Dbi3, Dbf1, Dbf2, Dbf3, Dbc1, Dbc2, Dbc3, Dbo1, Dbo2, Dbo3, Dby,
                                             Th1AccR, Th2AccR, Th3AccR, Tc1AccR, Tc2AccR, Tc3AccR],
                                  allow_input_downcast = True, #updates = scan_updatesR + scan_updates2R + scan_updates3R + \
-                                 updates = [(self.Wxi_1, self.Wxi_1 - self.R1*DWxi1), (self.Wxi_2, self.Wxi_2 - self.R2*DWxi2), (self.Wxi_3, self.Wxi_3 - self.R3*DWxi3),
+                                 updates = scan_update4 + [(self.Wxi_1, self.Wxi_1 - self.R1*DWxi1), (self.Wxi_2, self.Wxi_2 - self.R2*DWxi2), (self.Wxi_3, self.Wxi_3 - self.R3*DWxi3),
                                         (self.Wxf_1, self.Wxf_1 - self.R1*DWxf1), (self.Wxf_2, self.Wxf_2 - self.R2*DWxf2), (self.Wxf_3, self.Wxf_3 - self.R3*DWxf3),
                                         (self.Wxo_1, self.Wxo_1 - self.R1*DWxo1), (self.Wxo_2, self.Wxo_2 - self.R2*DWxo2), (self.Wxo_3, self.Wxo_3 - self.R3*DWxo3),
                                         (self.Wxc_1, self.Wxc_1 - self.R1*DWxc1), (self.Wxc_2, self.Wxc_2 - self.R2*DWxc2), (self.Wxc_3, self.Wxc_3 - self.R3*DWxc3),
@@ -1132,8 +1132,14 @@ class RNN4Music:
                             mbDataset.append(np.concatenate((((dataset[tuneIndex[n]].tolist())*int(tuneLength/(dataLength[tuneIndex[n]]))), dataset[tuneIndex[n]][0:(tuneLength%dataLength[tuneIndex[n]])])))
                         else:
                             mbDataset.append(dataset[tuneIndex[n]][0:lengthOfMB])
+                        #plt.figure(n)
+                        #plt.imshow(np.transpose(mbDataset[n]), origin='lower', aspect='auto',
+                        #     interpolation='nearest', cmap=pylab.cm.gray_r)
+                        #plt.colorbar()
+                plt.show()
                 for m in np.arange(noOfEpochPerMB):
                         pretime = time.time()
+                        #print("checking size of input tensor = " + str(np.array(mbDataset)[0:sizeOfMiniBatch,0:tuneLength-2,:].shape))
                         returns = gradfn(np.float32(np.array(mbDataset)[0:sizeOfMiniBatch,0:tuneLength-2,:]), np.float32(np.array(mbDataset)[0:sizeOfMiniBatch,1:tuneLength-1,:])) 
                         print("         time taken = " + str(time.time()-pretime) + ", loss = " + str(np.asarray(self.loss.eval())))
 
@@ -1155,9 +1161,9 @@ class RNN4Music:
                 
     
     def printDerivatives(self):
-	'''
-	prints all weight derivatives (as saved between updates for RMSprop)
-	'''
+        '''
+        prints all weight derivatives (as saved between updates for RMSprop)
+        '''
         
         print('DWxi1p=' + str(np.array(self.DWxi1p.eval()))); print('DWxi2p=' + str(np.array(self.DWxi2p.eval()))); print('DWxi3p=' + str(np.array(self.DWxi3p.eval())));
         print('DWxf1p=' + str(np.array(self.DWxf1p.eval()))); print('DWxf2p=' + str(np.array(self.DWxf2p.eval()))); print('DWxf3p=' + str(np.array(self.DWxf3p.eval())));
@@ -1272,7 +1278,7 @@ class RNN4Music:
 
         
 def main():
-    sizeOfMiniBatch = 10 #how many tunes per miniBatch
+    sizeOfMiniBatch = 1 #how many tunes per miniBatch
     noOfEpoch = 100 
     noOfEpochPerMB = 10
     lengthOfMB = 120
@@ -1301,7 +1307,7 @@ def main():
     #    for n in np.arange(0,np.array(dataset[k]).shape[0],1):
     #        dataset[k][n][0] = np.float32(2.0)*cp.deepcopy(dataset[k][n][0]) - np.float32(1.0)
 
-    myRNN4Music = RNN4Music(h1_length=176, h2_length=176, h3_length=176, io_length=88, R1=np.float32(0.0001), R2=np.float32(0.0001), R3=np.float32(0.0001), Rout=np.float32(0.0001)) 
+    myRNN4Music = RNN4Music(h1_length=120, h2_length=120, h3_length=120, io_length=88, R1=np.float32(0.001), R2=np.float32(0.001), R3=np.float32(0.001), Rout=np.float32(0.001)) 
     
     #myRNN4Music.loadParameters('528_264_176_0_0001_sqr_jigs')
     
@@ -1311,7 +1317,7 @@ def main():
     #myRNN4Music.loadParameters('176_176_176_0_0001_sqr_hpps_300')
 
     myRNN4Music.train(dataset, noOfEpochPerMB, noOfEpoch, sizeOfMiniBatch, lengthOfMB)
-    myRNN4Music.saveParameters('176_176_176_0_0001_sqr_hpps_100')
+    myRNN4Music.saveParameters('120_120_120_0_001_sqr_hpps_100')
     #myRNN4Music.train(dataset, noOfEpochPerMB, noOfEpoch, sizeOfMiniBatch)
     #myRNN4Music.saveParameters('176_176_176_0_0001_sqr_hpps_300')
     #myRNN4Music.train(dataset, noOfEpochPerMB, noOfEpoch, sizeOfMiniBatch)
@@ -1325,7 +1331,7 @@ def main():
     exampleLength = 20
     myRNN4Music.resetStates()
     generatedTuneProb = myRNN4Music.genMusic(np.float32(dataset[baseSample][0:exampleLength]), 2000)
-    midiwrite('176_176_176_0_0001_sqr_hpps' + str(baseSample) + '.mid', generatedTuneProb[0], (21, 109),0.3)
+    midiwrite('120_120_120_0_001_sqr_hpps' + str(baseSample) + '.mid', generatedTuneProb[0], (21, 109),0.3)
     #generatedTuneProb[0] is the tune, generatedTuneProb[1] is the probability at each iteration
     plt.figure(0)
     plt.imshow(np.array(generatedTuneProb[1][0:20,25:65]), origin = 'lower', extent=[25,65,0,20], aspect=1,
