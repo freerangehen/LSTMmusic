@@ -883,6 +883,9 @@ class RNN4Music:
                                     outputs_info=[None, None, cp.deepcopy(h1v), cp.deepcopy(h2v), cp.deepcopy(h3v), cp.deepcopy(h1v), cp.deepcopy(h2v), cp.deepcopy(h3v), 
                                                   None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None], 
                                     sequences=[T_egMB]) 
+
+        #blah need to replace those cp.deepcopy(h1v) etc with self.htd1_1 etc...
+        #after each run, you need to update self.htd1_1 with Th1Acc[-1] etc... which comes from the forward run!
         
         ###### forward run recheck if rows are indeed stuck... ######
         
