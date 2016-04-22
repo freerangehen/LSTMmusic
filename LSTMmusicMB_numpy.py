@@ -15,6 +15,7 @@ from copy import deepcopy
 import pickle as pkl
 import time
 import os
+from random import shuffle
 import theano 
 from theano import tensor as T, function, printing
 from theano.sandbox.rng_mrg import MRG_RandomStreams as RandomStreams
@@ -608,6 +609,10 @@ class RNN4Music:
 
         '''
         return T.mul(T.sgn(inTensor), T.minimum(self.gradClip,T.abs_(inTensor)))
+
+    def gClip_np(self, inMatrix):
+        
+        return np.clip(inMatrix, -self.gradClip, self.gradClip)
     
         
     def tanh(self, inVec):
@@ -619,6 +624,10 @@ class RNN4Music:
     def RMSgrad(self, prevGrad, newGrad):
         gradSqr = T.mul(np.float32(0.9), T.mul(prevGrad, prevGrad)) + T.mul(np.float32(0.1), T.mul(newGrad, newGrad))
         return (newGrad / T.sqrt(T.maximum(self.epsilon, gradSqr)))
+
+    def RMSgrad_np(self, prevGrad, newGrad):
+        gradSqr = np.float32(0.9)*(prevGrad**2) + np.float32(0.1)*(newGrad**2)
+        return newGrad / np.sqrt(np.clip(gradSqr, self.epsilon, gradSqr))
     
     def gdot(self, inVec):
         ''' gdot(input) : deriviative of sigmoid '''
@@ -851,7 +860,7 @@ class RNN4Music:
         self.htd1_3.set_value(np.float32(np.random.normal(np.float32(0.0),self.sigRand,self.h3_length)))
         
        
-    def train(self, egMatrix, egoutMatrix, noOfEpoch, sizeOfMiniBatch):
+    def train(self, dataset, noOfEpoch, MBn, lengthOfMB):
         '''
         given input and output examples, trains the 3 layer LSTM using grad descent and RMSprop
 
@@ -873,7 +882,7 @@ class RNN4Music:
 
         noOfEpoch (int): how many times you want to run through the input examples for training
 
-        sizeOfMiniBatch (int): the input example can be broken into further miniBatches. Each miniBatch induces a single gradient update per epoch. 
+        MBn (int): the input example can be broken into further miniBatches. Each miniBatch induces a single gradient update per epoch. 
                                 the mini. batches will be randomised during training.
 
         '''
@@ -975,79 +984,30 @@ class RNN4Music:
                                                                TWxj2, TWxj3, TWfj2, TWfj3, TWcj2, TWcj3, TWoj2, TWoj3,
                                                                TWci1, TWci2, TWci3, TWcf1, TWcf2, TWcf3, TWco1, TWco2, TWco3])
         
-        #RMS prop update gradient of all weights with previously saved gradient and newly summed (over time) gradient. newly summed gradients have magnitudes clipped to self.gradClip  
-        DWxi1 = self.RMSgrad(self.DWxi1p, self.gClip(Wxi1Acc[-1]));  DWxi2 = self.RMSgrad(self.DWxi2p, self.gClip(Wxi2Acc[-1]));  DWxi3 = self.RMSgrad(self.DWxi3p, self.gClip(Wxi3Acc[-1]))
-        DWxf1 = self.RMSgrad(self.DWxf1p, self.gClip(Wxf1Acc[-1]));  DWxf2 = self.RMSgrad(self.DWxf2p, self.gClip(Wxf2Acc[-1]));  DWxf3 = self.RMSgrad(self.DWxf3p, self.gClip(Wxf3Acc[-1]))
-        DWxo1 = self.RMSgrad(self.DWxo1p, self.gClip(Wxo1Acc[-1]));  DWxo2 = self.RMSgrad(self.DWxo2p, self.gClip(Wxo2Acc[-1]));  DWxo3 = self.RMSgrad(self.DWxo3p, self.gClip(Wxo3Acc[-1]))
-        DWxc1 = self.RMSgrad(self.DWxc1p, self.gClip(Wxc1Acc[-1]));  DWxc2 = self.RMSgrad(self.DWxc2p, self.gClip(Wxc2Acc[-1]));  DWxc3 = self.RMSgrad(self.DWxc3p, self.gClip(Wxc3Acc[-1]))
-        
-        DWhi1 = self.RMSgrad(self.DWhi1p, self.gClip(Whi1Acc[-1]));  DWhi2 = self.RMSgrad(self.DWhi2p, self.gClip(Whi2Acc[-1]));  DWhi3 = self.RMSgrad(self.DWhi3p, self.gClip(Whi3Acc[-1]))
-        DWhf1 = self.RMSgrad(self.DWhf1p, self.gClip(Whf1Acc[-1]));  DWhf2 = self.RMSgrad(self.DWhf2p, self.gClip(Whf2Acc[-1]));  DWhf3 = self.RMSgrad(self.DWhf3p, self.gClip(Whf3Acc[-1]))
-        DWho1 = self.RMSgrad(self.DWho1p, self.gClip(Who1Acc[-1]));  DWho2 = self.RMSgrad(self.DWho2p, self.gClip(Who2Acc[-1]));  DWho3 = self.RMSgrad(self.DWho3p, self.gClip(Who3Acc[-1]))
-        DWhc1 = self.RMSgrad(self.DWhc1p, self.gClip(Whc1Acc[-1]));  DWhc2 = self.RMSgrad(self.DWhc2p, self.gClip(Whc2Acc[-1]));  DWhc3 = self.RMSgrad(self.DWhc3p, self.gClip(Whc3Acc[-1]))
-        
-        DWhy1 = self.RMSgrad(self.DWhy1p, self.gClip(Why1Acc[-1]));  DWhy2 = self.RMSgrad(self.DWhy2p, self.gClip(Why2Acc[-1]));  DWhy3 = self.RMSgrad(self.DWhy3p, self.gClip(Why3Acc[-1]))
 
-        DWxj2 = self.RMSgrad(self.DWxj2p, self.gClip(Wxj2Acc[-1]));  DWxj3 = self.RMSgrad(self.DWxj3p, self.gClip(Wxj3Acc[-1]))
-        DWfj2 = self.RMSgrad(self.DWfj2p, self.gClip(Wfj2Acc[-1]));  DWfj3 = self.RMSgrad(self.DWfj3p, self.gClip(Wfj3Acc[-1]))
-        DWcj2 = self.RMSgrad(self.DWcj2p, self.gClip(Wcj2Acc[-1]));  DWcj3 = self.RMSgrad(self.DWcj3p, self.gClip(Wcj3Acc[-1]))
-        DWoj2 = self.RMSgrad(self.DWoj2p, self.gClip(Woj2Acc[-1]));  DWoj3 = self.RMSgrad(self.DWoj3p, self.gClip(Woj3Acc[-1]))
         
-        DWci1 = self.RMSgrad(self.DWci1p, self.gClip(Wci1Acc[-1]));  DWci2 = self.RMSgrad(self.DWci2p, self.gClip(Wci2Acc[-1]));  DWci3 = self.RMSgrad(self.DWci3p, self.gClip(Wci3Acc[-1]))
-        DWcf1 = self.RMSgrad(self.DWcf1p, self.gClip(Wcf1Acc[-1]));  DWcf2 = self.RMSgrad(self.DWcf2p, self.gClip(Wcf2Acc[-1]));  DWcf3 = self.RMSgrad(self.DWcf3p, self.gClip(Wcf3Acc[-1]))
-        DWco1 = self.RMSgrad(self.DWco1p, self.gClip(Wco1Acc[-1]));  DWco2 = self.RMSgrad(self.DWco2p, self.gClip(Wco2Acc[-1]));  DWco3 = self.RMSgrad(self.DWco3p, self.gClip(Wco3Acc[-1]))
-        
-        Dbi1 = self.RMSgrad(self.Dbi1p, self.gClip(T.sum(D_It_1Acc, axis=0, acc_dtype=theano.config.floatX)))
-        Dbi2 = self.RMSgrad(self.Dbi2p, self.gClip(T.sum(D_It_2Acc, axis=0, acc_dtype=theano.config.floatX)))
-        Dbi3 = self.RMSgrad(self.Dbi3p, self.gClip(T.sum(D_It_3Acc, axis=0, acc_dtype=theano.config.floatX)))
-        Dbf1 = self.RMSgrad(self.Dbf1p, self.gClip(T.sum(D_Ft_1Acc, axis=0, acc_dtype=theano.config.floatX)))
-        Dbf2 = self.RMSgrad(self.Dbf2p, self.gClip(T.sum(D_Ft_2Acc, axis=0, acc_dtype=theano.config.floatX)))
-        Dbf3 = self.RMSgrad(self.Dbf3p, self.gClip(T.sum(D_Ft_3Acc, axis=0, acc_dtype=theano.config.floatX)))
-        Dbc1 = self.RMSgrad(self.Dbc1p, self.gClip(T.sum(D_Ct_1Acc, axis=0, acc_dtype=theano.config.floatX)))
-        Dbc2 = self.RMSgrad(self.Dbc2p, self.gClip(T.sum(D_Ct_2Acc, axis=0, acc_dtype=theano.config.floatX)))
-        Dbc3 = self.RMSgrad(self.Dbc3p, self.gClip(T.sum(D_Ct_3Acc, axis=0, acc_dtype=theano.config.floatX)))
-        Dbo1 = self.RMSgrad(self.Dbo1p, self.gClip(T.sum(D_Ot_1Acc, axis=0, acc_dtype=theano.config.floatX)))
-        Dbo2 = self.RMSgrad(self.Dbo2p, self.gClip(T.sum(D_Ot_2Acc, axis=0, acc_dtype=theano.config.floatX)))
-        Dbo3 = self.RMSgrad(self.Dbo3p, self.gClip(T.sum(D_Ot_3Acc, axis=0, acc_dtype=theano.config.floatX)))
-        Dby = self.RMSgrad(self.Dbyp, self.gClip(T.sum(D_YtAcc, axis=0, acc_dtype=theano.config.floatX)))
-            
-        
-        ##backward pass testing, backward pass takes inputs from forward pass, so we're compiling two sequential scan()
-        #bkwdfn = theano.function(inputs=[T_egMB, T_egOutMB,
-        #                                 TDct3, TDct2, TDct1, TDot3, TDot2, TDot1, TDft3, TDft2, TDft1, TDit3, TDit2, TDit1],
-        #                         outputs = [D_YtAcc, D_It_3Acc, D_It_2Acc, D_It_1Acc, D_Ft_3Acc, D_Ft_2Acc, D_Ft_1Acc, D_Ct_3Acc, D_Ct_2Acc, D_Ct_1Acc, D_Ot_3Acc, D_Ot_2Acc, D_Ot_1Acc, 
-        #                                    D_ct_3Acc, D_ct_2Acc, D_ct_1Acc, D_ot_3Acc, D_ot_2Acc, D_ot_1Acc, D_ft_3Acc, D_ft_2Acc, D_ft_1Acc, D_it_3Acc, D_it_2Acc, D_it_1Acc],
-        #                         givens = {Thtd1_1:self.htd1_1, Thtd1_2:self.htd1_2, Thtd1_3:self.htd1_3, Tctd1_1:self.ctd1_1, Tctd1_2:self.ctd1_2, Tctd1_3:self.ctd1_3},
-        #                         allow_input_downcast = True, updates = scan_updates + scan_updates2, mode = 'FAST_RUN')
-        #bkwdfnRes = bkwdfn(egMatrix, egoutMatrix, \
-        #                            np.float32(np.asarray([0.0]*self.h3_length)), np.float32(np.asarray([0.0]*self.h2_length)), np.float32(np.asarray([0.0]*self.h1_length)), \
-        #                            np.float32(np.asarray([0.0]*self.h3_length)), np.float32(np.asarray([0.0]*self.h2_length)), np.float32(np.asarray([0.0]*self.h1_length)), \
-        #                            np.float32(np.asarray([0.0]*self.h3_length)), np.float32(np.asarray([0.0]*self.h2_length)), np.float32(np.asarray([0.0]*self.h1_length)), \
-        #                            np.float32(np.asarray([0.0]*self.h3_length)), np.float32(np.asarray([0.0]*self.h2_length)), np.float32(np.asarray([0.0]*self.h1_length)) )
-        #                            
-        #print('D_YtAcc = ' + str(np.asarray(bkwdfnRes[0]))); print('D_It_3Acc = ' + str(np.asarray(bkwdfnRes[1]))); print('D_It_2Acc = ' + str(np.asarray(bkwdfnRes[2])))
-        #print('D_It_1Acc = ' + str(np.asarray(bkwdfnRes[3]))); print('D_Ft_3Acc = ' + str(np.asarray(bkwdfnRes[4]))); print('D_Ft_2Acc = ' + str(np.asarray(bkwdfnRes[5])))
-        #print('D_Ft_1Acc = ' + str(np.asarray(bkwdfnRes[6]))); print('D_Ct_3Acc = ' + str(np.asarray(bkwdfnRes[7]))); print('D_Ct_2Acc = ' + str(np.asarray(bkwdfnRes[8])))
-        #print('D_Ct_1Acc = ' + str(np.asarray(bkwdfnRes[9]))); print('D_Ot_3Acc = ' + str(np.asarray(bkwdfnRes[10]))); print('D_Ot_2Acc = ' + str(np.asarray(bkwdfnRes[11])))
-        #print('D_Ot_1Acc = ' + str(np.asarray(bkwdfnRes[12]))); print('D_ct_3Acc = ' + str(np.asarray(bkwdfnRes[13]))); print('D_ct_2Acc = ' + str(np.asarray(bkwdfnRes[14])))
-        #print('D_ct_1Acc = ' + str(np.asarray(bkwdfnRes[15]))); print('D_ot_3Acc = ' + str(np.asarray(bkwdfnRes[16]))); print('D_ot_2Acc = ' + str(np.asarray(bkwdfnRes[17])))
-        #print('D_ot_1Acc = ' + str(np.asarray(bkwdfnRes[18]))); print('D_ft_3Acc = ' + str(np.asarray(bkwdfnRes[19]))); print('D_ft_2Acc = ' + str(np.asarray(bkwdfnRes[20])))
-        #print('D_ft_1Acc = ' + str(np.asarray(bkwdfnRes[21]))); print('D_it_3Acc = ' + str(np.asarray(bkwdfnRes[22]))); print('D_it_2Acc = ' + str(np.asarray(bkwdfnRes[23])))
-        #print('D_it_1Acc = ' + str(np.asarray(bkwdfnRes[24])))
-        
-        
-        #compile theano function for gradient updates based on bk prop and RMSprop gradient calculations:       
-        gradfn = theano.function(inputs=[T_egMB, T_egOutMB,
+
+
+        singleGradfn = theano.function(inputs=[T_egMB, T_egOutMB,
                                          TDct3, TDct2, TDct1, TDot3, TDot2, TDot1, TDft3, TDft2, TDft1, TDit3, TDit2, TDit1],
-                                 outputs = [TytAcc, Th1Acc, D_YtAcc, D_It_3Acc, D_It_2Acc, D_It_1Acc, D_Ft_3Acc, D_Ft_2Acc, D_Ft_1Acc, D_Ct_3Acc, D_Ct_2Acc, D_Ct_1Acc, D_Ot_3Acc, D_Ot_2Acc, D_Ot_1Acc, 
-                                            D_ct_3Acc, D_ct_2Acc, D_ct_1Acc, D_ot_3Acc, D_ot_2Acc, D_ot_1Acc, D_ft_3Acc, D_ft_2Acc, D_ft_1Acc, D_it_3Acc, D_it_2Acc, D_it_1Acc, 
-                                            DWxi1, DWxi2, DWxi3, DWxf1, DWxf2, DWxf3, DWxo1, DWxo2, DWxo3, DWxc1, DWxc2, DWxc3,
-                                            DWhi1, DWhi2, DWhi3, DWhf1, DWhf2, DWhf3, DWho1, DWho2, DWho3, DWhc1, DWhc2, DWhc3,
-                                            DWhy1, DWhy2, DWhy3,
-                                            DWxj2, DWxj3, DWfj2, DWfj3, DWcj2, DWcj3, DWoj2, DWoj3,
-                                            DWci1, DWci2, DWci3, DWcf1, DWcf2, DWcf3, DWco1, DWco2, DWco3, KLAcc,
-                                            Dbi1, Dbi2, Dbi3, Dbf1, Dbf2, Dbf3, Dbc1, Dbc2, Dbc3, Dbo1, Dbo2, Dbo3, Dby,
-                                            Th1Acc[-1], Th2Acc[-1], Th3Acc[-1], Tc1Acc[-1], Tc2Acc[-1], Tc3Acc[-1]],
+                                 outputs = [Wxi1Acc[-1], Wxi2Acc[-1], Wxi3Acc[-1], Wxf1Acc[-1], Wxf2Acc[-1], Wxf3Acc[-1],
+                                            Wxo1Acc[-1], Wxo2Acc[-1], Wxo3Acc[-1], Wxc1Acc[-1], Wxc2Acc[-1], Wxc3Acc[-1],        
+                                            Whi1Acc[-1], Whi2Acc[-1], Whi3Acc[-1], Whf1Acc[-1], Whf2Acc[-1], Whf3Acc[-1],
+                                            Who1Acc[-1], Who2Acc[-1], Who3Acc[-1], Whc1Acc[-1], Whc2Acc[-1], Whc3Acc[-1],
+                                            Why1Acc[-1], Why2Acc[-1], Why3Acc[-1],
+                                            Wxj2Acc[-1], Wxj3Acc[-1], Wfj2Acc[-1], Wfj3Acc[-1], Wcj2Acc[-1], Wcj3Acc[-1], Woj2Acc[-1], Woj3Acc[-1],        
+                                            Wci1Acc[-1], Wci2Acc[-1], Wci3Acc[-1], Wcf1Acc[-1], Wcf2Acc[-1], Wcf3Acc[-1], Wco1Acc[-1], Wco2Acc[-1], Wco3Acc[-1],
+                                            T.sum(D_It_1Acc, axis=0, acc_dtype=theano.config.floatX), T.sum(D_It_2Acc, axis=0, acc_dtype=theano.config.floatX),
+                                            T.sum(D_It_3Acc, axis=0, acc_dtype=theano.config.floatX), T.sum(D_Ft_1Acc, axis=0, acc_dtype=theano.config.floatX),
+                                            T.sum(D_Ft_2Acc, axis=0, acc_dtype=theano.config.floatX), T.sum(D_Ft_3Acc, axis=0, acc_dtype=theano.config.floatX),
+                                            T.sum(D_Ct_1Acc, axis=0, acc_dtype=theano.config.floatX), T.sum(D_Ct_2Acc, axis=0, acc_dtype=theano.config.floatX),
+                                            T.sum(D_Ct_3Acc, axis=0, acc_dtype=theano.config.floatX), T.sum(D_Ot_1Acc, axis=0, acc_dtype=theano.config.floatX),
+                                            T.sum(D_Ot_2Acc, axis=0, acc_dtype=theano.config.floatX), T.sum(D_Ot_3Acc, axis=0, acc_dtype=theano.config.floatX),
+                                            T.sum(D_YtAcc, axis=0, acc_dtype=theano.config.floatX),
+                                            Th1Acc[-1], Th2Acc[-1], Th3Acc[-1], Tc1Acc[-1], Tc2Acc[-1], Tc3Acc[-1],
+                                            TytAcc, Th1Acc, D_YtAcc, D_It_3Acc, D_It_2Acc, D_It_1Acc, D_Ft_3Acc, D_Ft_2Acc, D_Ft_1Acc, D_Ct_3Acc, D_Ct_2Acc, D_Ct_1Acc, D_Ot_3Acc, D_Ot_2Acc, D_Ot_1Acc, 
+                                            D_ct_3Acc, D_ct_2Acc, D_ct_1Acc, D_ot_3Acc, D_ot_2Acc, D_ot_1Acc, D_ft_3Acc, D_ft_2Acc, D_ft_1Acc, D_it_3Acc, D_it_2Acc, D_it_1Acc,
+                                            T.sum(KLAcc, dtype=theano.config.floatX, acc_dtype=theano.config.floatX)],
                                  givens = {Thtd1_1:self.htd1_1, Thtd1_2:self.htd1_2, Thtd1_3:self.htd1_3, Tctd1_1:self.ctd1_1, Tctd1_2:self.ctd1_2, Tctd1_3:self.ctd1_3,
                                            TWxi1:np.float32(np.asarray([[0.0]*self.io_length for n in range(self.h1_length)])), TWxi2:np.float32(np.asarray([[0.0]*self.io_length for n in range(self.h2_length)])), TWxi3:np.float32(np.asarray([[0.0]*self.io_length for n in range(self.h3_length)])),
                                            TWxf1:np.float32(np.asarray([[0.0]*self.io_length for n in range(self.h1_length)])), TWxf2:np.float32(np.asarray([[0.0]*self.io_length for n in range(self.h2_length)])), TWxf3:np.float32(np.asarray([[0.0]*self.io_length for n in range(self.h3_length)])),
@@ -1066,78 +1026,271 @@ class RNN4Music:
                                            TWcf1:np.float32(np.asarray([0.0]*self.h1_length)), TWcf2:np.float32(np.asarray([0.0]*self.h2_length)), TWcf3:np.float32(np.asarray([0.0]*self.h3_length)),
                                            TWco1:np.float32(np.asarray([0.0]*self.h1_length)), TWco2:np.float32(np.asarray([0.0]*self.h2_length)), TWco3:np.float32(np.asarray([0.0]*self.h3_length))
                                            },
-                                 allow_input_downcast = True, updates = scan_updates + scan_updates2 + scan_updates3 + \
-                                 [(self.Wxi_1, self.Wxi_1 - self.R1*DWxi1), (self.Wxi_2, self.Wxi_2 - self.R2*DWxi2), (self.Wxi_3, self.Wxi_3 - self.R3*DWxi3),
-                                  (self.Wxf_1, self.Wxf_1 - self.R1*DWxf1), (self.Wxf_2, self.Wxf_2 - self.R2*DWxf2), (self.Wxf_3, self.Wxf_3 - self.R3*DWxf3),
-                                  (self.Wxo_1, self.Wxo_1 - self.R1*DWxo1), (self.Wxo_2, self.Wxo_2 - self.R2*DWxo2), (self.Wxo_3, self.Wxo_3 - self.R3*DWxo3),
-                                  (self.Wxc_1, self.Wxc_1 - self.R1*DWxc1), (self.Wxc_2, self.Wxc_2 - self.R2*DWxc2), (self.Wxc_3, self.Wxc_3 - self.R3*DWxc3),
-                                  (self.Whi_1, self.Whi_1 - self.R1*DWhi1), (self.Whi_2, self.Whi_2 - self.R2*DWhi2), (self.Whi_3, self.Whi_3 - self.R3*DWhi3),
-                                  (self.Whf_1, self.Whf_1 - self.R1*DWhf1), (self.Whf_2, self.Whf_2 - self.R2*DWhf2), (self.Whf_3, self.Whf_3 - self.R3*DWhf3),
-                                  (self.Who_1, self.Who_1 - self.R1*DWho1), (self.Who_2, self.Who_2 - self.R2*DWho2), (self.Who_3, self.Who_3 - self.R3*DWho3),
-                                  (self.Whc_1, self.Whc_1 - self.R1*DWhc1), (self.Whc_2, self.Whc_2 - self.R2*DWhc2), (self.Whc_3, self.Whc_3 - self.R3*DWhc3),
-                                  (self.Why_1, self.Why_1 - self.R1*DWhy1), (self.Why_2, self.Why_2 - self.R2*DWhy2), (self.Why_3, self.Why_3 - self.R3*DWhy3),
-                                  (self.Wxj_2, self.Wxj_2 - self.R2*DWxj2), (self.Wxj_3, self.Wxj_3 - self.R3*DWxj3),
-                                  (self.Wfj_2, self.Wfj_2 - self.R2*DWfj2), (self.Wfj_3, self.Wfj_3 - self.R3*DWfj3),
-                                  (self.Wcj_2, self.Wcj_2 - self.R2*DWcj2), (self.Wcj_3, self.Wcj_3 - self.R3*DWcj3),
-                                  (self.Woj_2, self.Woj_2 - self.R2*DWoj2), (self.Woj_3, self.Woj_3 - self.R3*DWoj3),
-                                  (self.Wci_1, self.Wci_1 - self.R1*DWci1), (self.Wci_2, self.Wci_2 - self.R2*DWci2), (self.Wci_3, self.Wci_3 - self.R3*DWci3),
-                                  (self.Wcf_1, self.Wcf_1 - self.R1*DWcf1), (self.Wcf_2, self.Wcf_2 - self.R2*DWcf2), (self.Wcf_3, self.Wcf_3 - self.R3*DWcf3),
-                                  (self.Wco_1, self.Wco_1 - self.R1*DWco1), (self.Wco_2, self.Wco_2 - self.R2*DWco2), (self.Wco_3, self.Wco_3 - self.R3*DWco3),
-                                  (self.loss, T.sum(KLAcc, dtype=theano.config.floatX, acc_dtype=theano.config.floatX)),
-                                  (self.bi_1, self.bi_1 - self.R1*Dbi1), (self.bi_2, self.bi_2 - self.R2*Dbi2), (self.bi_3, self.bi_3 - self.R3*Dbi3),
-                                  (self.bf_1, self.bf_1 - self.R1*Dbf1), (self.bf_2, self.bf_2 - self.R2*Dbf2), (self.bf_3, self.bf_3 - self.R3*Dbf3),
-                                  (self.bc_1, self.bc_1 - self.R1*Dbc1), (self.bc_2, self.bc_2 - self.R2*Dbc2), (self.bc_3, self.bc_3 - self.R3*Dbc3),
-                                  (self.bo_1, self.bo_1 - self.R1*Dbo1), (self.bo_2, self.bo_2 - self.R2*Dbo2), (self.bo_3, self.bo_3 - self.R3*Dbo3),
-                                  (self.by, self.by - self.Rout*Dby),
-                                  (self.DWxi1p, Wxi1Acc[-1]), (self.DWxi2p, DWxi2), (self.DWxi3p, DWxi3),
-                                  (self.DWxf1p, DWxf1), (self.DWxf2p, DWxf2), (self.DWxf3p, DWxf3),
-                                  (self.DWxo1p, DWxo1), (self.DWxo2p, DWxo2), (self.DWxo3p, DWxo3),
-                                  (self.DWxc1p, DWxc1), (self.DWxc2p, DWxc2), (self.DWxc3p, DWxc3),
-                                  (self.DWhi1p, Whi1Acc[-1]), (self.DWhi2p, DWhi2), (self.DWhi3p, DWhi3),
-                                  (self.DWhf1p, DWhf1), (self.DWhf2p, DWhf2), (self.DWhf3p, DWhf3),
-                                  (self.DWho1p, DWho1), (self.DWho2p, DWho2), (self.DWho3p, DWho3),
-                                  (self.DWhc1p, DWhc1), (self.DWhc2p, DWhc2), (self.DWhc3p, DWhc3),
-                                  (self.DWhy1p, DWhy1), (self.DWhy2p, DWhy2), (self.DWhy3p, DWhy3),
-                                  (self.DWxj2p, DWxj2), (self.DWxj3p, DWxj3),
-                                  (self.DWfj2p, DWfj2), (self.DWfj3p, DWfj3),
-                                  (self.DWcj2p, DWcj2), (self.DWcj3p, DWcj3),
-                                  (self.DWoj2p, DWoj2), (self.DWoj3p, DWoj3),
-                                  (self.DWci1p, DWci1), (self.DWci2p, DWci2), (self.DWci3p, DWci3),
-                                  (self.DWcf1p, DWcf1), (self.DWcf2p, DWcf2), (self.DWcf3p, DWcf3),
-                                  (self.DWco1p, DWco1), (self.DWco2p, DWco2), (self.DWco3p, DWco3),
-                                  (self.Dbi1p, Dbi1), (self.Dbi2p, Dbi2), (self.Dbi3p, Dbi3),
-                                  (self.Dbf1p, Dbf1), (self.Dbf2p, Dbf2), (self.Dbf3p, Dbf3),
-                                  (self.Dbc1p, Dbc1), (self.Dbc2p, Dbc2), (self.Dbc3p, Dbc3),
-                                  (self.Dbo1p, Dbo1), (self.Dbo2p, Dbo2), (self.Dbo3p, Dbo3),
-                                  (self.Dbyp, Dby), 
-                                  (self.ctd1_1, Tc1Acc[-1]), (self.ctd1_2, Tc2Acc[-1]), (self.ctd1_3, Tc3Acc[-1]),
-                                  (self.htd1_1, Th1Acc[-1]), (self.htd1_2, Th2Acc[-1]), (self.htd1_3, Th3Acc[-1])
-                                  ], 
+                                 allow_input_downcast = True, 
+                                 updates = scan_updates + scan_updates2 + scan_updates3 + \
+                                                        [(self.ctd1_1, Tc1Acc[-1]), (self.ctd1_2, Tc2Acc[-1]), (self.ctd1_3, Tc3Acc[-1]),
+                                                         (self.htd1_1, Th1Acc[-1]), (self.htd1_2, Th2Acc[-1]), (self.htd1_3, Th3Acc[-1])], 
                                  mode = 'FAST_RUN')
+     
+        
+        #compile theano function for gradient updates based on bk prop and RMSprop gradient calculations:       
+        #gradfn = theano.function(inputs=[T_egMB, T_egOutMB,
+        #                                 TDct3, TDct2, TDct1, TDot3, TDot2, TDot1, TDft3, TDft2, TDft1, TDit3, TDit2, TDit1],
+        #                         outputs = [TytAcc, Th1Acc, D_YtAcc, D_It_3Acc, D_It_2Acc, D_It_1Acc, D_Ft_3Acc, D_Ft_2Acc, D_Ft_1Acc, D_Ct_3Acc, D_Ct_2Acc, D_Ct_1Acc, D_Ot_3Acc, D_Ot_2Acc, D_Ot_1Acc, 
+        #                                    D_ct_3Acc, D_ct_2Acc, D_ct_1Acc, D_ot_3Acc, D_ot_2Acc, D_ot_1Acc, D_ft_3Acc, D_ft_2Acc, D_ft_1Acc, D_it_3Acc, D_it_2Acc, D_it_1Acc, 
+        #                                    DWxi1, DWxi2, DWxi3, DWxf1, DWxf2, DWxf3, DWxo1, DWxo2, DWxo3, DWxc1, DWxc2, DWxc3,
+        #                                    DWhi1, DWhi2, DWhi3, DWhf1, DWhf2, DWhf3, DWho1, DWho2, DWho3, DWhc1, DWhc2, DWhc3,
+        #                                    DWhy1, DWhy2, DWhy3,
+        #                                    DWxj2, DWxj3, DWfj2, DWfj3, DWcj2, DWcj3, DWoj2, DWoj3,
+        #                                    DWci1, DWci2, DWci3, DWcf1, DWcf2, DWcf3, DWco1, DWco2, DWco3, KLAcc,
+        #                                    Dbi1, Dbi2, Dbi3, Dbf1, Dbf2, Dbf3, Dbc1, Dbc2, Dbc3, Dbo1, Dbo2, Dbo3, Dby,
+        #                                    Th1Acc[-1], Th2Acc[-1], Th3Acc[-1], Tc1Acc[-1], Tc2Acc[-1], Tc3Acc[-1]],
+        #                         givens = {Thtd1_1:self.htd1_1, Thtd1_2:self.htd1_2, Thtd1_3:self.htd1_3, Tctd1_1:self.ctd1_1, Tctd1_2:self.ctd1_2, Tctd1_3:self.ctd1_3,
+        #                                   TWxi1:np.float32(np.asarray([[0.0]*self.io_length for n in range(self.h1_length)])), TWxi2:np.float32(np.asarray([[0.0]*self.io_length for n in range(self.h2_length)])), TWxi3:np.float32(np.asarray([[0.0]*self.io_length for n in range(self.h3_length)])),
+        #                                   TWxf1:np.float32(np.asarray([[0.0]*self.io_length for n in range(self.h1_length)])), TWxf2:np.float32(np.asarray([[0.0]*self.io_length for n in range(self.h2_length)])), TWxf3:np.float32(np.asarray([[0.0]*self.io_length for n in range(self.h3_length)])),
+        #                                   TWxo1:np.float32(np.asarray([[0.0]*self.io_length for n in range(self.h1_length)])), TWxo2:np.float32(np.asarray([[0.0]*self.io_length for n in range(self.h2_length)])), TWxo3:np.float32(np.asarray([[0.0]*self.io_length for n in range(self.h3_length)])),
+        #                                   TWxc1:np.float32(np.asarray([[0.0]*self.io_length for n in range(self.h1_length)])), TWxc2:np.float32(np.asarray([[0.0]*self.io_length for n in range(self.h2_length)])), TWxc3:np.float32(np.asarray([[0.0]*self.io_length for n in range(self.h3_length)])),
+        #                                   TWhi1:np.float32(np.asarray([[0.0]*self.h1_length for n in range(self.h1_length)])), TWhi2:np.float32(np.asarray([[0.0]*self.h2_length for n in range(self.h2_length)])), TWhi3:np.float32(np.asarray([[0.0]*self.h3_length for n in range(self.h3_length)])),
+        #                                   TWhf1:np.float32(np.asarray([[0.0]*self.h1_length for n in range(self.h1_length)])), TWhf2:np.float32(np.asarray([[0.0]*self.h2_length for n in range(self.h2_length)])), TWhf3:np.float32(np.asarray([[0.0]*self.h3_length for n in range(self.h3_length)])),
+        #                                   TWho1:np.float32(np.asarray([[0.0]*self.h1_length for n in range(self.h1_length)])), TWho2:np.float32(np.asarray([[0.0]*self.h2_length for n in range(self.h2_length)])), TWho3:np.float32(np.asarray([[0.0]*self.h3_length for n in range(self.h3_length)])),
+        #                                   TWhc1:np.float32(np.asarray([[0.0]*self.h1_length for n in range(self.h1_length)])), TWhc2:np.float32(np.asarray([[0.0]*self.h2_length for n in range(self.h2_length)])), TWhc3:np.float32(np.asarray([[0.0]*self.h3_length for n in range(self.h3_length)])),
+        #                                   TWhy1:np.float32(np.asarray([[0.0]*self.h1_length for n in range(self.io_length)])), TWhy2:np.float32(np.asarray([[0.0]*self.h2_length for n in range(self.io_length)])), TWhy3:np.float32(np.asarray([[0.0]*self.h3_length for n in range(self.io_length)])),
+        #                                   TWxj2:np.float32(np.asarray([[0.0]*self.h1_length for n in range(self.h2_length)])), TWxj3:np.float32(np.asarray([[0.0]*self.h2_length for n in range(self.h3_length)])),
+        #                                   TWfj2:np.float32(np.asarray([[0.0]*self.h1_length for n in range(self.h2_length)])), TWfj3:np.float32(np.asarray([[0.0]*self.h2_length for n in range(self.h3_length)])),
+        #                                   TWcj2:np.float32(np.asarray([[0.0]*self.h1_length for n in range(self.h2_length)])), TWcj3:np.float32(np.asarray([[0.0]*self.h2_length for n in range(self.h3_length)])),
+        #                                   TWoj2:np.float32(np.asarray([[0.0]*self.h1_length for n in range(self.h2_length)])), TWoj3:np.float32(np.asarray([[0.0]*self.h2_length for n in range(self.h3_length)])),
+        #                                   TWci1:np.float32(np.asarray([0.0]*self.h1_length)), TWci2:np.float32(np.asarray([0.0]*self.h2_length)), TWci3:np.float32(np.asarray([0.0]*self.h3_length)),
+        #                                   TWcf1:np.float32(np.asarray([0.0]*self.h1_length)), TWcf2:np.float32(np.asarray([0.0]*self.h2_length)), TWcf3:np.float32(np.asarray([0.0]*self.h3_length)),
+        #                                   TWco1:np.float32(np.asarray([0.0]*self.h1_length)), TWco2:np.float32(np.asarray([0.0]*self.h2_length)), TWco3:np.float32(np.asarray([0.0]*self.h3_length))
+        #                                   },
+        #                         allow_input_downcast = True, updates = scan_updates + scan_updates2 + scan_updates3 + \
+        #                         [(self.Wxi_1, self.Wxi_1 - self.R1*DWxi1), (self.Wxi_2, self.Wxi_2 - self.R2*DWxi2), (self.Wxi_3, self.Wxi_3 - self.R3*DWxi3),
+        #                          (self.Wxf_1, self.Wxf_1 - self.R1*DWxf1), (self.Wxf_2, self.Wxf_2 - self.R2*DWxf2), (self.Wxf_3, self.Wxf_3 - self.R3*DWxf3),
+        #                          (self.Wxo_1, self.Wxo_1 - self.R1*DWxo1), (self.Wxo_2, self.Wxo_2 - self.R2*DWxo2), (self.Wxo_3, self.Wxo_3 - self.R3*DWxo3),
+        #                          (self.Wxc_1, self.Wxc_1 - self.R1*DWxc1), (self.Wxc_2, self.Wxc_2 - self.R2*DWxc2), (self.Wxc_3, self.Wxc_3 - self.R3*DWxc3),
+        #                          (self.Whi_1, self.Whi_1 - self.R1*DWhi1), (self.Whi_2, self.Whi_2 - self.R2*DWhi2), (self.Whi_3, self.Whi_3 - self.R3*DWhi3),
+        #                          (self.Whf_1, self.Whf_1 - self.R1*DWhf1), (self.Whf_2, self.Whf_2 - self.R2*DWhf2), (self.Whf_3, self.Whf_3 - self.R3*DWhf3),
+        #                          (self.Who_1, self.Who_1 - self.R1*DWho1), (self.Who_2, self.Who_2 - self.R2*DWho2), (self.Who_3, self.Who_3 - self.R3*DWho3),
+        #                          (self.Whc_1, self.Whc_1 - self.R1*DWhc1), (self.Whc_2, self.Whc_2 - self.R2*DWhc2), (self.Whc_3, self.Whc_3 - self.R3*DWhc3),
+        #                          (self.Why_1, self.Why_1 - self.R1*DWhy1), (self.Why_2, self.Why_2 - self.R2*DWhy2), (self.Why_3, self.Why_3 - self.R3*DWhy3),
+        #                          (self.Wxj_2, self.Wxj_2 - self.R2*DWxj2), (self.Wxj_3, self.Wxj_3 - self.R3*DWxj3),
+        #                          (self.Wfj_2, self.Wfj_2 - self.R2*DWfj2), (self.Wfj_3, self.Wfj_3 - self.R3*DWfj3),
+        #                          (self.Wcj_2, self.Wcj_2 - self.R2*DWcj2), (self.Wcj_3, self.Wcj_3 - self.R3*DWcj3),
+        #                          (self.Woj_2, self.Woj_2 - self.R2*DWoj2), (self.Woj_3, self.Woj_3 - self.R3*DWoj3),
+        #                          (self.Wci_1, self.Wci_1 - self.R1*DWci1), (self.Wci_2, self.Wci_2 - self.R2*DWci2), (self.Wci_3, self.Wci_3 - self.R3*DWci3),
+        #                          (self.Wcf_1, self.Wcf_1 - self.R1*DWcf1), (self.Wcf_2, self.Wcf_2 - self.R2*DWcf2), (self.Wcf_3, self.Wcf_3 - self.R3*DWcf3),
+        #                          (self.Wco_1, self.Wco_1 - self.R1*DWco1), (self.Wco_2, self.Wco_2 - self.R2*DWco2), (self.Wco_3, self.Wco_3 - self.R3*DWco3),
+        #                          (self.loss, T.sum(KLAcc, dtype=theano.config.floatX, acc_dtype=theano.config.floatX)),
+        #                          (self.bi_1, self.bi_1 - self.R1*Dbi1), (self.bi_2, self.bi_2 - self.R2*Dbi2), (self.bi_3, self.bi_3 - self.R3*Dbi3),
+        #                          (self.bf_1, self.bf_1 - self.R1*Dbf1), (self.bf_2, self.bf_2 - self.R2*Dbf2), (self.bf_3, self.bf_3 - self.R3*Dbf3),
+        #                          (self.bc_1, self.bc_1 - self.R1*Dbc1), (self.bc_2, self.bc_2 - self.R2*Dbc2), (self.bc_3, self.bc_3 - self.R3*Dbc3),
+        #                          (self.bo_1, self.bo_1 - self.R1*Dbo1), (self.bo_2, self.bo_2 - self.R2*Dbo2), (self.bo_3, self.bo_3 - self.R3*Dbo3),
+        #                          (self.by, self.by - self.Rout*Dby),
+        #                          (self.DWxi1p, Wxi1Acc[-1]), (self.DWxi2p, DWxi2), (self.DWxi3p, DWxi3),
+        #                          (self.DWxf1p, DWxf1), (self.DWxf2p, DWxf2), (self.DWxf3p, DWxf3),
+        #                          (self.DWxo1p, DWxo1), (self.DWxo2p, DWxo2), (self.DWxo3p, DWxo3),
+        #                          (self.DWxc1p, DWxc1), (self.DWxc2p, DWxc2), (self.DWxc3p, DWxc3),
+        #                          (self.DWhi1p, Whi1Acc[-1]), (self.DWhi2p, DWhi2), (self.DWhi3p, DWhi3),
+        #                          (self.DWhf1p, DWhf1), (self.DWhf2p, DWhf2), (self.DWhf3p, DWhf3),
+        #                          (self.DWho1p, DWho1), (self.DWho2p, DWho2), (self.DWho3p, DWho3),
+        #                          (self.DWhc1p, DWhc1), (self.DWhc2p, DWhc2), (self.DWhc3p, DWhc3),
+        #                          (self.DWhy1p, DWhy1), (self.DWhy2p, DWhy2), (self.DWhy3p, DWhy3),
+        #                          (self.DWxj2p, DWxj2), (self.DWxj3p, DWxj3),
+        #                          (self.DWfj2p, DWfj2), (self.DWfj3p, DWfj3),
+        #                          (self.DWcj2p, DWcj2), (self.DWcj3p, DWcj3),
+        #                          (self.DWoj2p, DWoj2), (self.DWoj3p, DWoj3),
+        #                          (self.DWci1p, DWci1), (self.DWci2p, DWci2), (self.DWci3p, DWci3),
+        #                          (self.DWcf1p, DWcf1), (self.DWcf2p, DWcf2), (self.DWcf3p, DWcf3),
+        #                          (self.DWco1p, DWco1), (self.DWco2p, DWco2), (self.DWco3p, DWco3),
+        #                          (self.Dbi1p, Dbi1), (self.Dbi2p, Dbi2), (self.Dbi3p, Dbi3),
+        #                          (self.Dbf1p, Dbf1), (self.Dbf2p, Dbf2), (self.Dbf3p, Dbf3),
+        #                          (self.Dbc1p, Dbc1), (self.Dbc2p, Dbc2), (self.Dbc3p, Dbc3),
+        #                          (self.Dbo1p, Dbo1), (self.Dbo2p, Dbo2), (self.Dbo3p, Dbo3),
+        #                          (self.Dbyp, Dby), 
+        #                          (self.ctd1_1, Tc1Acc[-1]), (self.ctd1_2, Tc2Acc[-1]), (self.ctd1_3, Tc3Acc[-1]),
+        #                          (self.htd1_1, Th1Acc[-1]), (self.htd1_2, Th2Acc[-1]), (self.htd1_3, Th3Acc[-1])
+        #                          ], 
+        #                         mode = 'FAST_RUN')
         
         #useful prints function structure to file:
         #theano.printing.pydotprint(gradfn)    
+
+
+
+        dataLength = [np.array(dataset[n]).shape[0] for n in np.arange(np.array(dataset).shape[0])]
+        tuneLength = lengthOfMB #np.max(dataLength)
+        tuneIndex = np.arange(np.array(dataset).shape[0])
+
+
+        print("-------------------------------------------")
+        print("size of mini-batch = " + str(MBn))
+        print("no. of epochs of MB = " + str(noOfEpoch))
+        print("length of each tune in MB = " +str(tuneLength))
+        print("-------------------------------------------")
+
+
+
+        for m in np.arange(noOfEpoch):
+            pretime=time.time()
+            epochLoss = np.float32(0.0)
+            shuffle(tuneIndex)
+            mbDataset = []
+            print("Epoch: " + str(n))
+            print("tunes in mini-batch: " + str(tuneIndex[0:MBn]))
+            for n in np.arange(0,MBn,1): #np.array(dataset).shape[0],1):
+                #make sure all tunes are same length as longest tune by replicating itselves so the MB mean gradient is fair!
+                if (dataLength[tuneIndex[n]] < lengthOfMB) :
+                    mbDataset.append(np.concatenate((((dataset[tuneIndex[n]].tolist())*int(tuneLength/(dataLength[tuneIndex[n]]))), dataset[tuneIndex[n]][0:(tuneLength%dataLength[tuneIndex[n]])])))
+                else:
+                    mbDataset.append(dataset[tuneIndex[n]][0:lengthOfMB])
+                #    plt.figure(n)
+                #    plt.imshow(np.transpose(mbDataset[n]), origin='lower', aspect='auto',
+                #                 interpolation='nearest', cmap=pylab.cm.gray_r)
+                #    plt.colorbar()
+                #plt.show()
+
+            ###### variables for gradient mean ###### 
+            #input gate:
+            dWxi1=np.array(np.float32([[0.0]*self.io_length for n in range(self.h1_length)])); dWhi1=np.array(np.float32([[0.0]*self.h1_length for n in range(self.h1_length)]))
+            dWci1=np.array(np.float32([0.0]*self.h1_length)); dbi1=np.array(np.float32([0.0]*self.h1_length))
+            #forget gate:
+            dWxf1=np.array(np.float32([[0.0]*self.io_length for n in range(self.h1_length)])); dWhf1=np.array(np.float32([[0.0]*self.h1_length for n in range(self.h1_length)]))
+            dWcf1=np.array(np.float32([0.0]*self.h1_length)); dbf1=np.array(np.float32([0.0]*self.h1_length))
+            #output gate:
+            dWxo1=np.array(np.float32([[0.0]*self.io_length for n in range(self.h1_length)])); dWho1=np.array(np.float32([[0.0]*self.h1_length for n in range(self.h1_length)]))
+            dWco1=np.array(np.float32([0.0]*self.h1_length)); dbo1=np.array(np.float32([0.0]*self.h1_length))
+            #state:
+            dWxc1=np.array(np.float32([[0.0]*self.io_length for n in range(self.h1_length)])); dWhc1=np.array(np.float32([[0.0]*self.h1_length for n in range(self.h1_length)]))
+            dbc1=np.array(np.float32([0.0]*self.h1_length))
+            #input gate:
+            dWxi2=np.array(np.float32([[0.0]*self.io_length for n in range(self.h2_length)])); dWxj2=np.array(np.float32([[0.0]*self.h1_length for n in range(self.h2_length)]))
+            dWhi2=np.array(np.float32([[0.0]*self.h2_length for n in range(self.h2_length)])); dWci2=np.array(np.float32([0.0]*self.h2_length)); dbi2=np.array(np.float32([0.0]*self.h2_length))
+            #forget gate:
+            dWxf2=np.array(np.float32([[0.0]*self.io_length for n in range(self.h2_length)])); dWfj2=np.array(np.float32([[0.0]*self.h1_length for n in range(self.h2_length)]))
+            dWhf2=np.array(np.float32([[0.0]*self.h2_length for n in range(self.h2_length)])); dWcf2=np.array(np.float32([0.0]*self.h2_length)); dbf2=np.array(np.float32([0.0]*self.h2_length))
+            #output gate:
+            dWxo2=np.array(np.float32([[0.0]*self.io_length for n in range(self.h2_length)])); dWoj2=np.array(np.float32([[0.0]*self.h1_length for n in range(self.h2_length)]))
+            dWho2=np.array(np.float32([[0.0]*self.h2_length for n in range(self.h2_length)])); dWco2=np.array(np.float32([0.0]*self.h2_length)); dbo2=np.array(np.float32([0.0]*self.h2_length))
+            #state:
+            dWxc2=np.array(np.float32([[0.0]*self.io_length for n in range(self.h2_length)])); dWcj2=np.array(np.float32([[0.0]*self.h1_length for n in range(self.h2_length)]))
+            dWhc2=np.array(np.float32([[0.0]*self.h2_length for n in range(self.h2_length)])); dbc2=np.array(np.float32([0.0]*self.h2_length))
+            ###### third layer RMSprop previous gradients ###### 
+            #input gate:
+            dWxi3=np.array(np.float32([[0.0]*self.io_length for n in range(self.h3_length)])); dWxj3=np.array(np.float32([[0.0]*self.h2_length for n in range(self.h3_length)]))
+            dWhi3=np.array(np.float32([[0.0]*self.h3_length for n in range(self.h3_length)])); dWci3=np.array(np.float32([0.0]*self.h3_length)); dbi3=np.array(np.float32([0.0]*self.h3_length))
+            #forget gate:
+            dWxf3=np.array(np.float32([[0.0]*self.io_length for n in range(self.h3_length)])); dWfj3=np.array(np.float32([[0.0]*self.h2_length for n in range(self.h3_length)]))
+            dWhf3=np.array(np.float32([[0.0]*self.h3_length for n in range(self.h3_length)])); dWcf3=np.array(np.float32([0.0]*self.h3_length)); dbf3=np.array(np.float32([0.0]*self.h3_length))
+            #output gate:
+            dWxo3=np.array(np.float32([[0.0]*self.io_length for n in range(self.h3_length)])); dWoj3=np.array(np.float32([[0.0 for m in range(self.h2_length)] for n in range(self.h3_length)]))
+            dWho3=np.array(np.float32([[0.0]*self.h3_length for n in range(self.h3_length)])); dWco3=np.array(np.float32([0.0]*self.h3_length)); dbo3=np.array(np.float32([0.0]*self.h3_length))
+            #state:
+            dWxc3=np.array(np.float32([[0.0]*self.io_length for n in range(self.h3_length)])); dWcj3=np.array(np.float32([[0.0]*self.h2_length for n in range(self.h3_length)]))
+            dWhc3=np.array(np.float32([[0.0]*self.h3_length for n in range(self.h3_length)])); dbc3=np.array(np.float32([0.0]*self.h3_length))
+            ###### output layer RMSprop previous gradients ###### 
+            dWhy1=np.array(np.float32([[0.0]*self.h1_length for n in range(self.io_length)])); dWhy2=np.array(np.float32([[0.0]*self.h2_length for n in range(self.io_length)]))
+            dWhy3=np.array(np.float32([[0.0]*self.h3_length for n in range(self.io_length)])); dby=np.array(np.float32([0.0]*self.io_length))
+           
+
+            # each mini batch, compute gradients, take average gradient, then update weights.
+            for n in np.arange(MBn):
+                [Wxi1r, Wxi2r, Wxi3r, Wxf1r, Wxf2r, Wxf3r,
+                 Wxo1r, Wxo2r, Wxo3r, Wxc1r, Wxc2r, Wxc3r,        
+                 Whi1r, Whi2r, Whi3r, Whf1r, Whf2r, Whf3r,
+                 Who1r, Who2r, Who3r, Whc1r, Whc2r, Whc3r,
+                 Why1r, Why2r, Why3r,
+                 Wxj2r, Wxj3r, Wfj2r, Wfj3r, Wcj2r, Wcj3r, Woj2r, Woj3r,        
+                 Wci1r, Wci2r, Wci3r, Wcf1r, Wcf2r, Wcf3r, Wco1r, Wco2r, Wco3r,
+                 bi1r, bi2r, bi3, bf1r, bf2r, bf3r, bc1r, bc2r, bc3r, bo1r, bo2r, bo3r, byr,
+                 Th1AccR, Th2AccR, Th3AccR, Tc1AccR, Tc2AccR, Tc3AccR,
+                 TytAccR, Th1AccR, D_YtAccR, D_It_3AccR, D_It_2AccR, D_It_1AccR, D_Ft_3AccR, D_Ft_2AccR, D_Ft_1AccR, D_Ct_3AccR, D_Ct_2AccR, D_Ct_1AccR, D_Ot_3AccR, D_Ot_2AccR, D_Ot_1AccR, 
+                 D_ct_3AccR, D_ct_2AccR, D_ct_1AccR, D_ot_3AccR, D_ot_2AccR, D_ot_1AccR, D_ft_3AccR, D_ft_2AccR, D_ft_1AccR, D_it_3AccR, D_it_2AccR, D_it_1AccR, 
+                    KLAccR] = singleGradfn(np.float32(np.array(mbDataset)[n,0:tuneLength-2,:]), np.float32(np.array(mbDataset)[n,1:tuneLength-1,:]), \
+                                            np.float32(np.asarray([0.0]*self.h3_length)), np.float32(np.asarray([0.0]*self.h2_length)), np.float32(np.asarray([0.0]*self.h1_length)), \
+                                            np.float32(np.asarray([0.0]*self.h3_length)), np.float32(np.asarray([0.0]*self.h2_length)), np.float32(np.asarray([0.0]*self.h1_length)), \
+                                            np.float32(np.asarray([0.0]*self.h3_length)), np.float32(np.asarray([0.0]*self.h2_length)), np.float32(np.asarray([0.0]*self.h1_length)), \
+                                            np.float32(np.asarray([0.0]*self.h3_length)), np.float32(np.asarray([0.0]*self.h2_length)), np.float32(np.asarray([0.0]*self.h1_length)) )
     
-    
-        prevLoss = 0
-        MBindex = np.arange(0, len(egMatrix), sizeOfMiniBatch)#len(egMatrix)#start, end, step
-        print("minibatch split: " + str(MBindex))
-        pretime=time.time()
-        for j in xrange(noOfEpoch):
-            #np.random.shuffle(MBindex)
-            #self.resetStates()
-            #self.resetRMSgrads()
-            #print('epoch ' + str(j))
-            for k in MBindex:
-                #self.resetStates()                
-                returns = gradfn(egMatrix[k:k+sizeOfMiniBatch], egoutMatrix[k:k+sizeOfMiniBatch], \
-                                    np.float32(np.asarray([0.0]*self.h3_length)), np.float32(np.asarray([0.0]*self.h2_length)), np.float32(np.asarray([0.0]*self.h1_length)), \
-                                    np.float32(np.asarray([0.0]*self.h3_length)), np.float32(np.asarray([0.0]*self.h2_length)), np.float32(np.asarray([0.0]*self.h1_length)), \
-                                    np.float32(np.asarray([0.0]*self.h3_length)), np.float32(np.asarray([0.0]*self.h2_length)), np.float32(np.asarray([0.0]*self.h1_length)), \
-                                    np.float32(np.asarray([0.0]*self.h3_length)), np.float32(np.asarray([0.0]*self.h2_length)), np.float32(np.asarray([0.0]*self.h1_length)) )
-                print("time taken = " + str(time.time()-pretime) + ", loss = " + str(np.asarray(self.loss.eval())) + ", minibatch " + str(k) + ", epoch " + str(j))
+
+                dWxi1 += Wxi1r/MBn; dWxi2 += Wxi2r/MBn; dWxi3 += Wxi3r/MBn; dWxf1 += Wxf1r/MBn; dWxf2 += Wxf2r/MBn; dWxf3 += Wxf3r/MBn
+                dWxo1 += Wxo1r/MBn; dWxo2 += Wxo2r/MBn; dWxo3 += Wxo3r/MBn; dWxc1 += Wxc1r/MBn; dWxc2 += Wxc2r/MBn; dWxc3 += Wxc3r/MBn        
+                dWhi1 += Whi1r/MBn; dWhi2 += Whi2r/MBn; dWhi3 += Whi3r/MBn; dWhf1 += Whf1r/MBn; dWhf2 += Whf2r/MBn; dWhf3 += Whf3r/MBn
+                dWho1 += Who1r/MBn; dWho2 += Who2r/MBn; dWho3 += Who3r/MBn; dWhc1 += Whc1r/MBn; dWhc2 += Whc2r/MBn; dWhc3 += Whc3r/MBn
+                dWhy1 += Why1r/MBn; dWhy2 += Why2r/MBn; dWhy3 += Why3r/MBn
+                dWxj2 += Wxj2r/MBn; dWxj3 += Wxj3r/MBn; dWfj2 += Wfj2r/MBn; dWfj3 += Wfj3r/MBn; dWcj2 += Wcj2r/MBn; dWcj3 += Wcj3r/MBn; dWoj2 += Woj2r/MBn; dWoj3 += Woj3r/MBn        
+                dWci1 += Wci1r/MBn; dWci2 += Wci2r/MBn; dWci3 += Wci3r/MBn; dWcf1 += Wcf1r/MBn; dWcf2 += Wcf2r/MBn; dWcf3 += Wcf3r/MBn; dWco1 += Wco1r/MBn; dWco2 += Wco2r/MBn; dWco3 += Wco3r/MBn
+                dbi1 += bi1r/MBn; dbi2 += bi2r/MBn; dbi3 += bi3/MBn; dbf1 += bf1r/MBn; dbf2 += bf2r/MBn; dbf3 += bf3r/MBn 
+                dbc1 += bc1r/MBn; dbc2 += bc2r/MBn; dbc3 += bc3r/MBn; dbo1 += bo1r/MBn; dbo2 += bo2r/MBn; dbo3 += bo3r/MBn; dby += byr/MBn
+                epochLoss += KLAccR/MBn
+            #update weights with averaged gradient in the MB:
+            self.updateWeights(dWxi1, dWxi2, dWxi3, dWxf1, dWxf2, dWxf3, dWxo1, dWxo2, dWxo3, dWxc1, dWxc2, dWxc3, dWhi1, dWhi2, dWhi3, 
+                                    dWhf1, dWhf2, dWhf3, dWho1, dWho2, dWho3, dWhc1, dWhc2, dWhc3, dWhy1, dWhy2, dWhy3,
+                                    dWxj2, dWxj3, dWfj2, dWfj3, dWcj2, dWcj3, dWoj2, dWoj3, dWci1, dWci2, dWci3, dWcf1, dWcf2, dWcf3, 
+                                    dWco1, dWco2, dWco3, dbi1, dbi2, dbi3, dbf1, dbf2, dbf3, dbc1, dbc2, dbc3, dbo1, dbo2, dbo3, dby)
+            print("time taken = " + str(time.time()-pretime) + ", loss = " + str(epochLoss) + ", epoch " + str(m))
+
+   
+
                 
+    def updateWeights(self, dWxi1, dWxi2, dWxi3, dWxf1, dWxf2, dWxf3, dWxo1, dWxo2, dWxo3, dWxc1, dWxc2, dWxc3, dWhi1, dWhi2, dWhi3, dWhf1, dWhf2, dWhf3, dWho1, dWho2, dWho3, dWhc1, dWhc2, dWhc3, dWhy1, dWhy2, dWhy3,
+                            dWxj2, dWxj3, dWfj2, dWfj3, dWcj2, dWcj3, dWoj2, dWoj3, dWci1, dWci2, dWci3, dWcf1, dWcf2, dWcf3, dWco1, dWco2, dWco3, dbi1, dbi2, dbi3, dbf1, dbf2, dbf3, dbc1, dbc2, dbc3, dbo1, dbo2, dbo3, dby):
+        #RMS prop update gradient of all weights with previously saved gradient and newly averaged (over MB) gradient. newly averaged gradients have magnitudes clipped to self.gradClip  
+        self.DWxi1p.set_value(self.RMSgrad_np(self.DWxi1p.eval(), self.gClip_np(dWxi1)));  self.DWxi2p.set_value(self.RMSgrad_np(self.DWxi2p.eval(), self.gClip_np(dWxi2)));  self.DWxi3p.set_value(self.RMSgrad_np(self.DWxi3p.eval(), self.gClip_np(dWxi3)))
+        self.DWxf1p.set_value(self.RMSgrad_np(self.DWxf1p.eval(), self.gClip_np(dWxf1)));  self.DWxf2p.set_value(self.RMSgrad_np(self.DWxf2p.eval(), self.gClip_np(dWxf2)));  self.DWxf3p.set_value(self.RMSgrad_np(self.DWxf3p.eval(), self.gClip_np(dWxf3)))
+        self.DWxo1p.set_value(self.RMSgrad_np(self.DWxo1p.eval(), self.gClip_np(dWxo1)));  self.DWxo2p.set_value(self.RMSgrad_np(self.DWxo2p.eval(), self.gClip_np(dWxo2)));  self.DWxo3p.set_value(self.RMSgrad_np(self.DWxo3p.eval(), self.gClip_np(dWxo3)))
+        self.DWxc1p.set_value(self.RMSgrad_np(self.DWxc1p.eval(), self.gClip_np(dWxc1)));  self.DWxc2p.set_value(self.RMSgrad_np(self.DWxc2p.eval(), self.gClip_np(dWxc2)));  self.DWxc3p.set_value(self.RMSgrad_np(self.DWxc3p.eval(), self.gClip_np(dWxc3)))
+        
+        self.DWhi1p.set_value(self.RMSgrad_np(self.DWhi1p.eval(), self.gClip_np(dWhi1)));  self.DWhi2p.set_value(self.RMSgrad_np(self.DWhi2p.eval(), self.gClip_np(dWhi2)));  self.DWhi3p.set_value(self.RMSgrad_np(self.DWhi3p.eval(), self.gClip_np(dWhi3)))
+        self.DWhf1p.set_value(self.RMSgrad_np(self.DWhf1p.eval(), self.gClip_np(dWhf1)));  self.DWhf2p.set_value(self.RMSgrad_np(self.DWhf2p.eval(), self.gClip_np(dWhf2)));  self.DWhf3p.set_value(self.RMSgrad_np(self.DWhf3p.eval(), self.gClip_np(dWhf3)))
+        self.DWho1p.set_value(self.RMSgrad_np(self.DWho1p.eval(), self.gClip_np(dWho1)));  self.DWho2p.set_value(self.RMSgrad_np(self.DWho2p.eval(), self.gClip_np(dWho2)));  self.DWho3p.set_value(self.RMSgrad_np(self.DWho3p.eval(), self.gClip_np(dWho3)))
+        self.DWhc1p.set_value(self.RMSgrad_np(self.DWhc1p.eval(), self.gClip_np(dWhc1)));  self.DWhc2p.set_value(self.RMSgrad_np(self.DWhc2p.eval(), self.gClip_np(dWhc2)));  self.DWhc3p.set_value(self.RMSgrad_np(self.DWhc3p.eval(), self.gClip_np(dWhc3)))
+        
+        self.DWhy1p.set_value(self.RMSgrad_np(self.DWhy1p.eval(), self.gClip_np(dWhy1)));  self.DWhy2p.set_value(self.RMSgrad_np(self.DWhy2p.eval(), self.gClip_np(dWhy2)));  self.DWhy3p.set_value(self.RMSgrad_np(self.DWhy3p.eval(), self.gClip_np(dWhy3)))
+
+        self.DWxj2p.set_value(self.RMSgrad_np(self.DWxj2p.eval(), self.gClip_np(dWxj2)));  self.DWxj3p.set_value(self.RMSgrad_np(self.DWxj3p.eval(), self.gClip_np(dWxj3)))
+        self.DWfj2p.set_value(self.RMSgrad_np(self.DWfj2p.eval(), self.gClip_np(dWfj2)));  self.DWfj3p.set_value(self.RMSgrad_np(self.DWfj3p.eval(), self.gClip_np(dWfj3)))
+        self.DWcj2p.set_value(self.RMSgrad_np(self.DWcj2p.eval(), self.gClip_np(dWcj2)));  self.DWcj3p.set_value(self.RMSgrad_np(self.DWcj3p.eval(), self.gClip_np(dWcj3)))
+        self.DWoj2p.set_value(self.RMSgrad_np(self.DWoj2p.eval(), self.gClip_np(dWoj2)));  self.DWoj3p.set_value(self.RMSgrad_np(self.DWoj3p.eval(), self.gClip_np(dWoj3)))
+        
+        self.DWci1p.set_value(self.RMSgrad_np(self.DWci1p.eval(), self.gClip_np(dWci1)));  self.DWci2p.set_value(self.RMSgrad_np(self.DWci2p.eval(), self.gClip_np(dWci2)));  self.DWci3p.set_value(self.RMSgrad_np(self.DWci3p.eval(), self.gClip_np(dWci3)))
+        self.DWcf1p.set_value(self.RMSgrad_np(self.DWcf1p.eval(), self.gClip_np(dWcf1)));  self.DWcf2p.set_value(self.RMSgrad_np(self.DWcf2p.eval(), self.gClip_np(dWcf2)));  self.DWcf3p.set_value(self.RMSgrad_np(self.DWcf3p.eval(), self.gClip_np(dWcf3)))
+        self.DWco1p.set_value(self.RMSgrad_np(self.DWco1p.eval(), self.gClip_np(dWco1)));  self.DWco2p.set_value(self.RMSgrad_np(self.DWco2p.eval(), self.gClip_np(dWco2)));  self.DWco3p.set_value(self.RMSgrad_np(self.DWco3p.eval(), self.gClip_np(dWco3)))
+        
+        self.Dbi1p.set_value(self.RMSgrad_np(self.Dbi1p.eval(), self.gClip_np(dbi1))); self.Dbi2p.set_value(self.RMSgrad_np(self.Dbi2p.eval(), self.gClip_np(dbi2))); self.Dbi3p.set_value(self.RMSgrad_np(self.Dbi3p.eval(), self.gClip_np(dbi3)))
+        self.Dbf1p.set_value(self.RMSgrad_np(self.Dbf1p.eval(), self.gClip_np(dbf1))); self.Dbf2p.set_value(self.RMSgrad_np(self.Dbf2p.eval(), self.gClip_np(dbf2))); self.Dbf3p.set_value(self.RMSgrad_np(self.Dbf3p.eval(), self.gClip_np(dbf3)))
+        self.Dbc1p.set_value(self.RMSgrad_np(self.Dbc1p.eval(), self.gClip_np(dbc1))); self.Dbc2p.set_value(self.RMSgrad_np(self.Dbc2p.eval(), self.gClip_np(dbc2))); self.Dbc3p.set_value(self.RMSgrad_np(self.Dbc3p.eval(), self.gClip_np(dbc3)))
+        self.Dbo1p.set_value(self.RMSgrad_np(self.Dbo1p.eval(), self.gClip_np(dbo1))); self.Dbo2p.set_value(self.RMSgrad_np(self.Dbo2p.eval(), self.gClip_np(dbo2))); self.Dbo3p.set_value(self.RMSgrad_np(self.Dbo3p.eval(), self.gClip_np(dbo3)))
+        self.Dbyp.set_value(self.RMSgrad_np(self.Dbyp.eval(), self.gClip_np(dby)))      
+
+        self.Wxi_1.set_value(self.Wxi_1.eval()-self.R1 *self.DWxi1p.eval());  self.Wxi_2.set_value(self.Wxi_2.eval()-self.R2 *self.DWxi2p.eval());  self.Wxi_3.set_value(self.Wxi_3.eval()-self.R3 *self.DWxi3p.eval())
+        self.Wxf_1.set_value(self.Wxf_1.eval()-self.R1 *self.DWxf1p.eval());  self.Wxf_2.set_value(self.Wxf_2.eval()-self.R2 *self.DWxf2p.eval());  self.Wxf_3.set_value(self.Wxf_3.eval()-self.R3 *self.DWxf3p.eval())
+        self.Wxo_1.set_value(self.Wxo_1.eval()-self.R1 *self.DWxo1p.eval());  self.Wxo_2.set_value(self.Wxo_2.eval()-self.R2 *self.DWxo2p.eval());  self.Wxo_3.set_value(self.Wxo_3.eval()-self.R3 *self.DWxo3p.eval())
+        self.Wxc_1.set_value(self.Wxc_1.eval()-self.R1 *self.DWxc1p.eval());  self.Wxc_2.set_value(self.Wxc_2.eval()-self.R2 *self.DWxc2p.eval());  self.Wxc_3.set_value(self.Wxc_3.eval()-self.R3 *self.DWxc3p.eval())
+        
+        self.Whi_1.set_value(self.Whi_1.eval()-self.R1 *self.DWhi1p.eval());  self.Whi_2.set_value(self.Whi_2.eval()-self.R2 *self.DWhi2p.eval());  self.Whi_3.set_value(self.Whi_3.eval()-self.R3 *self.DWhi3p.eval())
+        self.Whf_1.set_value(self.Whf_1.eval()-self.R1 *self.DWhf1p.eval());  self.Whf_2.set_value(self.Whf_2.eval()-self.R2 *self.DWhf2p.eval());  self.Whf_3.set_value(self.Whf_3.eval()-self.R3 *self.DWhf3p.eval())
+        self.Who_1.set_value(self.Who_1.eval()-self.R1 *self.DWho1p.eval());  self.Who_2.set_value(self.Who_2.eval()-self.R2 *self.DWho2p.eval());  self.Who_3.set_value(self.Who_3.eval()-self.R3 *self.DWho3p.eval())
+        self.Whc_1.set_value(self.Whc_2.eval()-self.R1 *self.DWhc1p.eval());  self.Whc_2.set_value(self.Whc_2.eval()-self.R2 *self.DWhc2p.eval());  self.Whc_3.set_value(self.Whc_3.eval()-self.R3 *self.DWhc3p.eval())
+        
+        self.Why_1.set_value(self.Why_1.eval()-self.R1 *self.DWhy1p.eval());  self.Why_2.set_value(self.Why_2.eval()- self.R2 *self.DWhy2p.eval());  self.Why_3.set_value(self.Why_3.eval()-self.R3 *self.DWhy3p.eval())
+
+        self.Wxj_2.set_value(self.Wxj_2.eval()-self.R2 *self.DWxj2p.eval());  self.Wxj_3.set_value(self.Wxj_3.eval()-self.R3 *self.DWxj3p.eval())
+        self.Wfj_2.set_value(self.Wfj_2.eval()-self.R2 *self.DWfj2p.eval());  self.Wfj_3.set_value(self.Wfj_3.eval()-self.R3 *self.DWfj3p.eval())
+        self.Wcj_2.set_value(self.Wcj_2.eval()-self.R2 *self.DWcj2p.eval());  self.Wcj_3.set_value(self.Wcj_3.eval()-self.R3 *self.DWcj3p.eval())
+        self.Woj_2.set_value(self.Woj_2.eval()-self.R2 *self.DWoj2p.eval());  self.Woj_3.set_value(self.Woj_3.eval()-self.R3 *self.DWoj3p.eval())
+        
+        self.Wci_1.set_value(self.Wci_1.eval()-self.R1 *self.DWci1p.eval());  self.Wci_2.set_value(self.Wci_2.eval()-self.R2 *self.DWci2p.eval());  self.Wci_3.set_value(self.Wci_3.eval()-self.R3 *self.DWci3p.eval())
+        self.Wcf_1.set_value(self.Wcf_1.eval()-self.R1 *self.DWcf1p.eval());  self.Wcf_2.set_value(self.Wcf_2.eval()-self.R2 *self.DWcf2p.eval());  self.Wcf_3.set_value(self.Wcf_3.eval()-self.R3 *self.DWcf3p.eval())
+        self.Wco_1.set_value(self.Wco_1.eval()-self.R1 *self.DWco1p.eval());  self.Wco_2.set_value(self.Wco_2.eval()-self.R2 *self.DWco2p.eval());  self.Wco_3.set_value(self.Wco_3.eval()-self.R3 *self.DWco3p.eval())
+        
+        self.bi_1.set_value(self.bi_1.eval()-self.R1 *self.Dbi1p.eval()); self.bi_2.set_value(self.bi_2.eval()-self.R2 *self.Dbi2p.eval()); self.bi_3.set_value(self.bi_3.eval()-self.R3 *self.Dbi3p.eval())
+        self.bf_1.set_value(self.bf_1.eval()-self.R1 *self.Dbf1p.eval()); self.bf_2.set_value(self.bf_2.eval()-self.R2 *self.Dbf2p.eval()); self.bf_3.set_value(self.bf_3.eval()-self.R3 *self.Dbf3p.eval())
+        self.bc_1.set_value(self.bc_1.eval()-self.R1 *self.Dbc1p.eval()); self.bc_2.set_value(self.bc_2.eval()-self.R2 *self.Dbc2p.eval()); self.bc_3.set_value(self.bc_3.eval()-self.R3 *self.Dbc3p.eval())
+        self.bo_1.set_value(self.bo_1.eval()-self.R1 *self.Dbo1p.eval()); self.bo_2.set_value(self.bo_2.eval()-self.R2 *self.Dbo2p.eval()); self.bo_3.set_value(self.bo_3.eval()-self.R3 *self.Dbo3p.eval())
+        self.by.set_value(self.by.eval()-self.Rout *self.Dbyp.eval())
     
+
+
     def printDerivatives(self):
         '''
         prints all weight derivatives (as saved between updates for RMSprop)
@@ -1249,8 +1402,8 @@ class RNN4Music:
 
         
 def main():
-    sizeOfMiniBatch = 2000
-    noOfEpoch = 10
+    sizeOfMiniBatch = 5
+    noOfEpoch = 100
     path = './Piano-midi.de/train-individual/hpps'
     files = os.listdir(path)
     assert len(files) > 0, 'Training set is empty!' \
@@ -1319,11 +1472,10 @@ def main():
          print('training with data[' + str(n) + ']')
          #myRNN4Music.resetStates()
          myRNN4Music.resetRMSgrads()   
-         myRNN4Music.train(np.float32(dataset[n][0:dataLength[n]-2]), np.float32(dataset[n][1:dataLength[n]-1]), noOfEpoch, sizeOfMiniBatch) 
+         myRNN4Music.train(dataset, noOfEpoch, sizeOfMiniBatch, 120) 
          myRNN4Music.saveParameters('original')
          #myRNN4Music.printDerivatives()
          #myRNN4Music.printWeights()
-
 
 
 
