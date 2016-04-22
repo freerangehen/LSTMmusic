@@ -542,14 +542,14 @@ class RNN4Music:
 
             '''
 
-        #D_yt_temp = - (kt / T.maximum(self.epsilon, yt)) + ((np.float32(1.0) - kt) / (1-T.minimum((np.float32(1.0) - self.epsilon),yt))) #cross entropy cost function
-        #D_yt = D_yt_temp #cross entropy square error
-        D_yt_temp = yt - kt #sqr error cost function
-        D_yt = D_yt_temp[0] #sqr error cost function
+        D_yt_temp = - (kt / T.maximum(self.epsilon, yt)) + ((np.float32(1.0) - kt) / (1-T.minimum((np.float32(1.0) - self.epsilon),yt))) #cross entropy cost function
+        D_yt = D_yt_temp #cross entropy square error
+        #D_yt_temp = yt - kt #sqr error cost function
+        #D_yt = D_yt_temp[0] #sqr error cost function
         D_Yt = T.mul(D_yt, self.gdot(Yt))
         
-        costEst = T.sum(T.mul(np.float32(0.5), T.mul(kt-yt,kt-yt)), dtype=theano.config.floatX, acc_dtype=theano.config.floatX)
-        #costEst = T.sum(-T.mul(kt,T.log(yt)) - T.mul((np.float32(1.0)-kt), T.log(np.float32(1.0)-yt)))
+        #costEst = T.sum(T.mul(np.float32(0.5), T.mul(kt-yt,kt-yt)), dtype=theano.config.floatX, acc_dtype=theano.config.floatX)
+        costEst = T.sum(-T.mul(kt,T.log(yt)) - T.mul((np.float32(1.0)-kt), T.log(np.float32(1.0)-yt)))
 
 
         ###### start with layer 3 for back prop ##### 
@@ -879,10 +879,9 @@ class RNN4Music:
         [TytAcc, TYtAcc, Th1Acc, Th2Acc, Th3Acc, Tc1Acc, Tc2Acc, Tc3Acc, 
          Tit_1Acc, Tit_2Acc, Tit_3Acc, Tft_1Acc, Tft_2Acc, Tft_3Acc, Tot_1Acc, Tot_2Acc, Tot_3Acc,
          TIt_1Acc, TIt_2Acc, TIt_3Acc, TFt_1Acc, TFt_2Acc, TFt_3Acc, TOt_1Acc, TOt_2Acc, TOt_3Acc, TCt_1Acc, TCt_2Acc, TCt_3Acc], \
-        scan_updates = theano.scan(fn=self.forwardPass, 
+        self.ud1 = theano.scan(fn=self.forwardPass, sequences=[T_egMB],
                                     outputs_info=[None, None,  h1_cont, h2_cont, h3_cont, c1_cont, c2_cont, c3_cont, 
-                                                  None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None], 
-                                    sequences=[T_egMB]) 
+                                                  None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None]) 
 
         #blah need to replace those cp.deepcopy(h1v) etc with self.htd1_1 etc...
         #after each run, you need to update self.htd1_1 with Th1Acc[-1] etc... which comes from the forward run!
@@ -910,7 +909,7 @@ class RNN4Music:
         ###### backwards run: generating error signals for all variables across all layers and across time ######
         [KLAcc, D_YtAcc, D_It_3Acc, D_It_2Acc, D_It_1Acc, D_Ft_3Acc, D_Ft_2Acc, D_Ft_1Acc, D_Ct_3Acc, D_Ct_2Acc, D_Ct_1Acc, D_Ot_3Acc, D_Ot_2Acc, D_Ot_1Acc, 
             D_ct_3Acc, D_ct_2Acc, D_ct_1Acc, D_ot_3Acc, D_ot_2Acc, D_ot_1Acc, D_ft_3Acc, D_ft_2Acc, D_ft_1Acc, D_it_3Acc, D_it_2Acc, D_it_1Acc], \
-        scan_updates2 = theano.scan(fn=self.backwardPass,          
+        self.ud2 = theano.scan(fn=self.backwardPass,          
                                     sequences = [TytAcc, TYtAcc, T_egOutMB,
                                                  self.p1(TIt_3Acc), self.p1(TIt_2Acc), self.p1(TIt_1Acc), self.p1(TFt_3Acc), self.p1(TFt_2Acc), self.p1(TFt_1Acc), 
                                                     self.p1(TOt_3Acc), self.p1(TOt_2Acc), self.p1(TOt_1Acc), self.p1(TCt_3Acc), self.p1(TCt_2Acc), self.p1(TCt_1Acc),
@@ -933,7 +932,7 @@ class RNN4Music:
          Why1Acc, Why2Acc, Why3Acc,
          Wxj2Acc, Wxj3Acc, Wfj2Acc, Wfj3Acc, Wcj2Acc, Wcj3Acc, Woj2Acc, Woj3Acc,
          Wci1Acc, Wci2Acc, Wci3Acc, Wcf1Acc, Wcf2Acc, Wcf3Acc, Wco1Acc, Wco2Acc, Wco3Acc], \
-        scan_updates3 = theano.scan(fn=self.gradSum, 
+        self.ud3 = theano.scan(fn=self.gradSum, 
                                                sequences = [T_egMB, self.d1(Th1Acc), self.d1(Th2Acc), self.d1(Th3Acc), 
                                                             D_It_1Acc, D_It_2Acc, D_It_3Acc, D_Ft_1Acc, D_Ft_2Acc, D_Ft_3Acc, D_Ot_1Acc, D_Ot_2Acc, D_Ot_3Acc, D_Ct_1Acc, D_Ct_2Acc, D_Ct_3Acc,
                                                             D_YtAcc, Th1Acc, Th2Acc, Th3Acc, self.d1(Tc1Acc), self.d1(Tc2Acc), self.d1(Tc3Acc), Tc1Acc, Tc2Acc, Tc3Acc],
@@ -959,7 +958,7 @@ class RNN4Music:
                 T.sum(D_Ct_3Acc, axis=0, acc_dtype=theano.config.floatX), T.sum(D_Ot_1Acc, axis=0, acc_dtype=theano.config.floatX),
                 T.sum(D_Ot_2Acc, axis=0, acc_dtype=theano.config.floatX), T.sum(D_Ot_3Acc, axis=0, acc_dtype=theano.config.floatX),
                 T.sum(D_YtAcc, axis=0, acc_dtype=theano.config.floatX), 
-                T.sum(KLAcc, acc_dtype=theano.config.floatX), Th1Acc[-1], Th2Acc[-1], Th3Acc[-1], Tc1Acc[-1], Tc2Acc[-1], Tc3Acc[-1], scan_updates, scan_updates2, scan_updates3]
+                T.sum(KLAcc, acc_dtype=theano.config.floatX), Th1Acc[-1], Th2Acc[-1], Th3Acc[-1], Tc1Acc[-1], Tc2Acc[-1], Tc3Acc[-1]]
         
 
     def mean(self, inputT):
@@ -1008,15 +1007,14 @@ class RNN4Music:
          Wxj2AccR, Wxj3AccR, Wfj2AccR, Wfj3AccR, Wcj2AccR, Wcj3AccR, Woj2AccR, Woj3AccR,
          Wci1AccR, Wci2AccR, Wci3AccR, Wcf1AccR, Wcf2AccR, Wcf3AccR, Wco1AccR, Wco2AccR, Wco3AccR,
          D_It_1AccR, D_It_2AccR, D_It_3AccR, D_Ft_1AccR, D_Ft_2AccR, D_Ft_3AccR, D_Ct_1AccR, D_Ct_2AccR, D_Ct_3AccR, D_Ot_1AccR, D_Ot_2AccR, D_Ot_3AccR,
-         D_YtAccR, KLAccR,  Th1AccR, Th2AccR, Th3AccR, Tc1AccR, Tc2AccR, Tc3AccR, ud1, ud2, ud3], scan_update4 = theano.scan(fn=self.gradSingleTune, sequences=[T_egMB, T_egOutMB],
+         D_YtAccR, KLAccR,  Th1AccR, Th2AccR, Th3AccR, Tc1AccR, Tc2AccR, Tc3AccR], scan_update4 = theano.scan(fn=self.gradSingleTune, sequences=[T_egMB, T_egOutMB],
                                                                                                     outputs_info = [None, None, None, None, None, None, None, None, None, 
                                                                                                                     None, None, None, None, None, None, None, None, None, 
                                                                                                                     None, None, None, None, None, None, None, None, None, 
                                                                                                                      None, None, None, None, None, None, None, None, 
                                                                                                                      None, None, None, None, None, None, None, None, None, 
                                                                                                                      None, None, None, None, None, None, None, None, None, None, None, None, 
-                                                                                                                     None, None, self.htd1_1, self.htd1_2, self.htd1_3, self.ctd1_1, self.ctd1_2, self.ctd1_3,
-                                                                                                                    None, None, None])
+                                                                                                                     None, None, self.htd1_1, self.htd1_2, self.htd1_3, self.ctd1_1, self.ctd1_2, self.ctd1_3])
                                                                                                                      
 
 
@@ -1085,8 +1083,8 @@ class RNN4Music:
                                             DWci1, DWci2, DWci3, DWcf1, DWcf2, DWcf3, DWco1, DWco2, DWco3, KLAccR,
                                             Dbi1, Dbi2, Dbi3, Dbf1, Dbf2, Dbf3, Dbc1, Dbc2, Dbc3, Dbo1, Dbo2, Dbo3, Dby,
                                             Th1AccR, Th2AccR, Th3AccR, Tc1AccR, Tc2AccR, Tc3AccR],
-                                 allow_input_downcast = True, #updates = scan_updatesR + scan_updates2R + scan_updates3R + \
-                                 updates = ud + ud2 + ud3 + scan_update4 + [(self.Wxi_1, self.Wxi_1 - self.R1*DWxi1), (self.Wxi_2, self.Wxi_2 - self.R2*DWxi2), (self.Wxi_3, self.Wxi_3 - self.R3*DWxi3),
+                                 allow_input_downcast = True, 
+                                 updates = self.ud1 + self.ud2 + self.ud3 + scan_update4 + [(self.Wxi_1, self.Wxi_1 - self.R1*DWxi1), (self.Wxi_2, self.Wxi_2 - self.R2*DWxi2), (self.Wxi_3, self.Wxi_3 - self.R3*DWxi3),
                                         (self.Wxf_1, self.Wxf_1 - self.R1*DWxf1), (self.Wxf_2, self.Wxf_2 - self.R2*DWxf2), (self.Wxf_3, self.Wxf_3 - self.R3*DWxf3),
                                         (self.Wxo_1, self.Wxo_1 - self.R1*DWxo1), (self.Wxo_2, self.Wxo_2 - self.R2*DWxo2), (self.Wxo_3, self.Wxo_3 - self.R3*DWxo3),
                                         (self.Wxc_1, self.Wxc_1 - self.R1*DWxc1), (self.Wxc_2, self.Wxc_2 - self.R2*DWxc2), (self.Wxc_3, self.Wxc_3 - self.R3*DWxc3),
@@ -1166,7 +1164,9 @@ class RNN4Music:
                 plt.show()
                 for m in np.arange(noOfEpochPerMB):
                         pretime = time.time()
-                        #print("checking size of input tensor = " + str(np.array(mbDataset)[0:sizeOfMiniBatch,0:tuneLength-2,:].shape))
+                        #self.printDerivatives()
+                        #self.printWeights()
+                        #print("checking size of input tensor = " + str(np.array(mbDataset)[0:sizeOfMiniBatch,0:tuneLength-2,:].shape) + ", and " + str(np.array(mbDataset)[0:sizeOfMiniBatch,1:tuneLength-1,:].shape))
                         returns = gradfn(np.float32(np.array(mbDataset)[0:sizeOfMiniBatch,0:tuneLength-2,:]), np.float32(np.array(mbDataset)[0:sizeOfMiniBatch,1:tuneLength-1,:])) 
                         print("         time taken = " + str(time.time()-pretime) + ", loss = " + str(np.asarray(self.loss.eval())))
 

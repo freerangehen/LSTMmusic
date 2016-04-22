@@ -542,14 +542,14 @@ class RNN4Music:
 
         '''
 
-        D_yt_temp = - (kt / T.maximum(self.epsilon, yt)) + ((np.float32(1.0) - kt) / (1-T.minimum((np.float32(1.0) - self.epsilon),yt))) #cross entropy cost function
-        D_yt = D_yt_temp #cross entropy square error
-        #D_yt_temp = yt - kt #sqr error cost function
-        #D_yt = D_yt_temp[0] #sqr error cost function
+        #D_yt_temp = - (kt / T.maximum(self.epsilon, yt)) + ((np.float32(1.0) - kt) / (1-T.minimum((np.float32(1.0) - self.epsilon),yt))) #cross entropy cost function
+        #D_yt = D_yt_temp #cross entropy square error
+        D_yt_temp = yt - kt #sqr error cost function
+        D_yt = D_yt_temp[0] #sqr error cost function
         D_Yt = T.mul(D_yt, self.gdot(Yt))
         
-        #sqrCost = T.sum(T.mul(np.float32(0.5), T.mul(kt-yt,kt-yt)), dtype=theano.config.floatX, acc_dtype=theano.config.floatX)
-        sqrCost = T.sum(-T.mul(kt,T.log(yt)) - T.mul((np.float32(1.0)-kt), T.log(np.float32(1.0)-yt)))
+        sqrCost = T.sum(T.mul(np.float32(0.5), T.mul(kt-yt,kt-yt)), dtype=theano.config.floatX, acc_dtype=theano.config.floatX)
+        #sqrCost = T.sum(-T.mul(kt,T.log(yt)) - T.mul((np.float32(1.0)-kt), T.log(np.float32(1.0)-yt)))
 
 
         ###### start with layer 3 for back prop ##### 
@@ -1135,7 +1135,7 @@ class RNN4Music:
             epochLoss = np.float32(0.0)
             shuffle(tuneIndex)
             mbDataset = []
-            print("Epoch: " + str(n))
+            print("Epoch: " + str(m))
             print("tunes in mini-batch: " + str(tuneIndex[0:MBn]))
             for n in np.arange(0,MBn,1): #np.array(dataset).shape[0],1):
                 #make sure all tunes are same length as longest tune by replicating itselves so the MB mean gradient is fair!
@@ -1403,7 +1403,7 @@ class RNN4Music:
         
 def main():
     sizeOfMiniBatch = 5
-    noOfEpoch = 100
+    noOfEpoch = 200
     path = './Piano-midi.de/train-individual/hpps'
     files = os.listdir(path)
     assert len(files) > 0, 'Training set is empty!' \
@@ -1465,18 +1465,14 @@ def main():
     
 
     #myRNN4Music.loadParameters('fixedTrial_xEnError_109')    
-
-    #examples400_120_noSoftmax_RNN7_676_r2plus sounds good on generating [100]
-    #200 examples over 10 hrs
-    for n in np.arange(0,np.array(dataset).shape[0],1): #np.arange(np.array(dataset).shape[0]):
-         print('training with data[' + str(n) + ']')
-         #myRNN4Music.resetStates()
-         myRNN4Music.resetRMSgrads()   
-         myRNN4Music.train(dataset, noOfEpoch, sizeOfMiniBatch, 120) 
-         myRNN4Music.saveParameters('original')
-         #myRNN4Music.printDerivatives()
-         #myRNN4Music.printWeights()
-
+    #myRNN4Music.saveParameters('original')
+    #myRNN4Music.loadParameters('original')
+    
+    #myRNN4Music.resetStates()
+    myRNN4Music.resetRMSgrads()   
+    myRNN4Music.train(dataset, noOfEpoch, sizeOfMiniBatch, 120) 
+    myRNN4Music.saveParameters('originalsqr')
+    
 
 
 #    myRNN4Music.saveParameters('fixedTrial')
@@ -1505,7 +1501,7 @@ def main():
     exampleLength = 50
     myRNN4Music.resetStates()
     generatedTuneProb = myRNN4Music.genMusic(np.float32(dataset[baseSample][0:exampleLength]), 2000)
-    midiwrite('fixedtrial_' + str(baseSample) + '182xEnError.mid', generatedTuneProb[0], (21, 109),0.3)
+    midiwrite('fixedtrial_' + str(baseSample) + '182sqrError.mid', generatedTuneProb[0], (21, 109),0.3)
     #generatedTuneProb[0] is the tune, generatedTuneProb[1] is the probability at each iteration
     plt.figure(0)
     plt.imshow(np.array(generatedTuneProb[1][0:20,25:65]), origin = 'lower', extent=[25,65,0,20], aspect=1,
