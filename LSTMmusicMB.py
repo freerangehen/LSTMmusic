@@ -1273,8 +1273,8 @@ class RNN4Music:
         
 def main():
     sizeOfMiniBatch = 5 #how many tunes per miniBatch
-    noOfEpoch = 250 
-    noOfEpochPerMB = 10
+    noOfEpoch = 50 
+    noOfEpochPerMB = 5
     lengthOfMB = 120
     path = './Piano-midi.de/train-individual/hpps'
     #path = './Piano-midi.de/train'
@@ -1301,21 +1301,23 @@ def main():
     #    for n in np.arange(0,np.array(dataset[k]).shape[0],1):
     #        dataset[k][n][0] = np.float32(2.0)*cp.deepcopy(dataset[k][n][0]) - np.float32(1.0)
 
-    myRNN4Music = RNN4Music(h1_length=120, h2_length=120, h3_length=120, io_length=88, R1=np.float32(0.01), R2=np.float32(0.001), R3=np.float32(0.001), Rout=np.float32(0.001)) 
+    myRNN4Music = RNN4Music(h1_length=120, h2_length=120, h3_length=120, io_length=88, R1=np.float32(0.001), R2=np.float32(0.001), R3=np.float32(0.001), Rout=np.float32(0.001)) 
     
     #myRNN4Music.loadParameters('528_264_176_0_0001_sqr_jigs')
     
 
     #print("dataset[0].shape = " + str(dataset[0].shape))
 
-    #myRNN4Music.loadParameters('176_176_176_0_0001_sqr_hpps_300')
+    myRNN4Music.loadParameters('120_120_120_0_001_sqr_hpps_150')
 
     myRNN4Music.train(dataset, noOfEpochPerMB, noOfEpoch, sizeOfMiniBatch, lengthOfMB)
-    myRNN4Music.saveParameters('120_120_120_0_001_sqr_hpps_100')
-    #myRNN4Music.train(dataset, noOfEpochPerMB, noOfEpoch, sizeOfMiniBatch)
-    #myRNN4Music.saveParameters('176_176_176_0_0001_sqr_hpps_300')
-    #myRNN4Music.train(dataset, noOfEpochPerMB, noOfEpoch, sizeOfMiniBatch)
-    #myRNN4Music.saveParameters('176_176_176_0_0001_sqr_hpps_400')
+    myRNN4Music.saveParameters('120_120_120_0_001_sqr_hpps_200')
+    myRNN4Music.train(dataset, noOfEpochPerMB, noOfEpoch, sizeOfMiniBatch, lengthOfMB)
+    myRNN4Music.saveParameters('120_120_120_0_001_sqr_hpps_250')
+    myRNN4Music.train(dataset, noOfEpochPerMB, noOfEpoch, sizeOfMiniBatch, lengthOfMB)
+    myRNN4Music.saveParameters('120_120_120_0_001_sqr_hpps_300')
+
+
     
 
 
