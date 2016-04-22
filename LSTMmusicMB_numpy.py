@@ -545,7 +545,7 @@ class RNN4Music:
         #D_yt_temp = - (kt / T.maximum(self.epsilon, yt)) + ((np.float32(1.0) - kt) / (1-T.minimum((np.float32(1.0) - self.epsilon),yt))) #cross entropy cost function
         #D_yt = D_yt_temp #cross entropy square error
         D_yt_temp = yt - kt #sqr error cost function
-        D_yt = D_yt_temp[0] #sqr error cost function
+        D_yt = D_yt_temp #sqr error cost function
         D_Yt = T.mul(D_yt, self.gdot(Yt))
         
         sqrCost = T.sum(T.mul(np.float32(0.5), T.mul(kt-yt,kt-yt)), dtype=theano.config.floatX, acc_dtype=theano.config.floatX)
