@@ -1,0 +1,12 @@
+*.npz
+*.mp3
+*.mid
+*.*~
+*.pyc
+*.readME
+LSTMmusic_b4MB.py
+T_mean.py
+doubleScanTrial.py
+/Piano*
+/Theano
+/midi
