@@ -392,7 +392,7 @@ class RNN4Music:
                 git_1, git_2, git_3, gft_1, gft_2, gft_3, got_1, got_2, got_3,
                 gIt_1, gIt_2, gIt_3, gFt_1, gFt_2, gFt_3, gOt_1, gOt_2, gOt_3, gCt_1, gCt_2, gCt_3] = self.forwardPass(in1, htd1_1, htd1_2, htd1_3, ctd1_1, ctd1_2, ctd1_3)
             
-        outProb = gyt #sigmoid output itself is probability, no need to normalise
+        outProb = T.switch(gyt > np.float32(0.05), gyt, np.float32(0.0)) #sigmoid output itself is probability, no need to normalise
         fdbkSamples = self.T_rng.binomial(size=(1,self.io_length), p=outProb, dtype=theano.config.floatX)
  
         return [fdbkSamples[0], gYt, ght_1, ght_2, ght_3, gct_1, gct_2, gct_3, 
@@ -541,10 +541,8 @@ class RNN4Music:
 
             '''
 
-        #D_yt_temp = - (kt / T.maximum(self.epsilon, yt)) + ((np.float32(1.0) - kt) / (1-T.minimum((np.float32(1.0) - self.epsilon),yt))) #cross entropy cost function
-        #D_yt = D_yt_temp #cross entropy square error
-        D_yt_temp = yt - kt #sqr error cost function
-        D_yt = D_yt_temp #sqr error cost function
+        D_yt = - (kt / T.maximum(self.epsilon, yt)) + ((np.float32(1.0) - kt) / (1-T.minimum((np.float32(1.0) - self.epsilon),yt))) #cross entropy cost function
+        #D_yt = yt - kt #sqr error cost function
         D_Yt = T.mul(D_yt, self.gdot(Yt))
         
         #costEst = T.sum(T.mul(np.float32(0.5), T.mul(kt-yt,kt-yt)), dtype=theano.config.floatX, acc_dtype=theano.config.floatX)
@@ -872,6 +870,10 @@ class RNN4Music:
         h1v = np.float32(np.asarray([0.0]*self.h1_length))
         h2v = np.float32(np.asarray([0.0]*self.h2_length))
         h3v = np.float32(np.asarray([0.0]*self.h3_length))
+
+        #reset states between examples within mini-batch as well, comment out to experiment:
+        h1_cont = cp.deepcopy(h1v); h2_cont = cp.deepcopy(h2v); h3_cont = cp.deepcopy(h3v)
+        c1_cont = cp.deepcopy(h1v); c2_cont = cp.deepcopy(h2v); c3_cont = cp.deepcopy(h3v)
 
 
         ###### forward run ######         
@@ -1271,94 +1273,4 @@ class RNN4Music:
     
 
         
-def main():
-    sizeOfMiniBatch = 5 #how many tunes per miniBatch
-    noOfEpoch = 50 
-    noOfEpochPerMB = 5
-    lengthOfMB = 120
-    path = './Piano-midi.de/train-individual/hpps'
-    #path = './Piano-midi.de/train'
-    files = os.listdir(path)
-    assert len(files) > 0, 'Training set is empty!' \
-                               ' (did you download the data files?)'
-    #pitch range is from 21 to 109
-    dataset = [midiread((path + "/" + f), (21, 109),0.3).piano_roll.astype(theano.config.floatX) for f in files]
-    
-                  
-    #check number of notes for each tune:       
-    print(str([np.array(dataset[n]).shape[0] for n in np.arange(np.array(dataset).shape[0])]))
-
-
-
-    # set "silent" to zero in 1-hot format
-    for k in np.arange(np.array(dataset).shape[0]):
-        for n in np.arange(0,np.array(dataset[k]).shape[0],1):
-            if np.sum(dataset[k][n], dtype=theano.config.floatX) == 0 :
-                dataset[k][n][0] = np.float32(1.0)
-                
-    ## set data to +/-1
-    #for k in np.arange(np.array(dataset).shape[0]):
-    #    for n in np.arange(0,np.array(dataset[k]).shape[0],1):
-    #        dataset[k][n][0] = np.float32(2.0)*cp.deepcopy(dataset[k][n][0]) - np.float32(1.0)
-
-    myRNN4Music = RNN4Music(h1_length=120, h2_length=120, h3_length=120, io_length=88, R1=np.float32(0.001), R2=np.float32(0.001), R3=np.float32(0.001), Rout=np.float32(0.001)) 
-    
-    #myRNN4Music.loadParameters('528_264_176_0_0001_sqr_jigs')
-    
-
-    #print("dataset[0].shape = " + str(dataset[0].shape))
-
-    myRNN4Music.loadParameters('120_120_120_0_001_sqr_hpps_150')
-
-    myRNN4Music.train(dataset, noOfEpochPerMB, noOfEpoch, sizeOfMiniBatch, lengthOfMB)
-    myRNN4Music.saveParameters('120_120_120_0_001_sqr_hpps_200')
-    myRNN4Music.train(dataset, noOfEpochPerMB, noOfEpoch, sizeOfMiniBatch, lengthOfMB)
-    myRNN4Music.saveParameters('120_120_120_0_001_sqr_hpps_250')
-    myRNN4Music.train(dataset, noOfEpochPerMB, noOfEpoch, sizeOfMiniBatch, lengthOfMB)
-    myRNN4Music.saveParameters('120_120_120_0_001_sqr_hpps_300')
-
-
-    
-
-
-
-
-    baseSample = 1
-    exampleLength = 20
-    myRNN4Music.resetStates()
-    generatedTuneProb = myRNN4Music.genMusic(np.float32(dataset[baseSample][0:exampleLength]), 2000)
-    midiwrite('120_120_120_0_001_sqr_hpps' + str(baseSample) + '.mid', generatedTuneProb[0], (21, 109),0.3)
-    #generatedTuneProb[0] is the tune, generatedTuneProb[1] is the probability at each iteration
-    plt.figure(0)
-    plt.imshow(np.array(generatedTuneProb[1][0:20,25:65]), origin = 'lower', extent=[25,65,0,20], aspect=1,
-                    interpolation = 'nearest', cmap='gist_stern_r')
-    plt.title('probability of generated midi note piano-roll')
-    plt.xlabel('midi note')
-    plt.ylabel('sample number (time steps)')
-    plt.colorbar()
-
-    plt.figure(1)
-    plt.imshow(np.transpose(dataset[baseSample]), origin='lower', aspect='auto',
-                             interpolation='nearest', cmap=pylab.cm.gray_r)
-    plt.colorbar()
-    plt.title('original piano-roll')
-    plt.xlabel('sample number (time steps)')
-    plt.ylabel('midi note')
-
-    plt.figure(2)
-    plt.imshow(np.transpose(np.array(generatedTuneProb[0][0:500])), origin='lower', aspect='auto',
-                             interpolation='nearest', cmap=pylab.cm.gray_r)
-    plt.colorbar()
-    plt.title('generated piano-roll')
-    plt.xlabel('sample number (time steps)')
-    plt.ylabel('midi note')
-    plt.show()
-    
-
-    
-        
-        
-if __name__ == "__main__":
-    main()
-
 
