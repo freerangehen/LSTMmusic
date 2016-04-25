@@ -71,6 +71,9 @@ class RNN4Music:
         self.muRand = np.float32(0.01) # for weights/biases that are initialisaed to ~uniform(0, muRand) 
         self.sigRand = np.float32(0.1) #S.D. of normally distributed initialisation of weights/biases
 
+        #during music generation, ignore output probabilities below genProfThreshold
+        self.genProbThreshold = 0.1
+
         # house keeping variables        
         self.parameterSaved = False
         self.parameterLoaded = False
@@ -309,6 +312,9 @@ class RNN4Music:
      
     
     def resetRMSgrads(self):
+        '''
+            reset rolling average (RMS) of gradient updates
+        '''
      
         ###### first layer RMSprop previous gradients ###### 
         #input gate:
@@ -383,16 +389,36 @@ class RNN4Music:
         self.DWhy2p.set_value(np.float32([[0.0]*self.h2_length for n in range(self.io_length)]))
         self.DWhy3p.set_value(np.float32([[0.0]*self.h3_length for n in range(self.io_length)]))
         self.Dbyp.set_value(np.float32([0.0]*self.io_length))
+
+
         
     def forwardPassGen(self, in1, htd1_1, htd1_2, htd1_3, ctd1_1, ctd1_2, ctd1_3):
         '''
+            feeds generated output at time t into input for network at time t+1 to calculate output at time t+1, called from genMusic() and uses forwardPass()
+
+            arguments:
+            
+                in1 (theano tensor.vector): network output at previous time step 
+                htd1_1, htd1_2, htd1_3 (theano tensor.vector): network hidden outputs at previous time step
+                ctd1_1, ctd1_2, ctd1_3 (theano tensor.vector): network state at previous time step
+
+            returns:
+                fdbkSamples[0] (theano tensor.vector): generated output samples at t+1
+
+                gYt, ght_1, ght_2, ght_3, gct_1, gct_2, gct_3, 
+                git_1, git_2, git_3, gft_1, gft_2, gft_3, got_1, got_2, got_3,
+                gIt_1, gIt_2, gIt_3, gFt_1, gFt_2, gFt_3, gOt_1, gOt_2, gOt_3, 
+                gCt_1, gCt_2, gCt_3 (theano tensor.vector): network hidden state outputs, memory values, gate outputs, gate outputs pre-sigmoid etc internal variables at t+1
+
+                outProb (theano tensor.vector): generated output probabilities at t+1
+
         '''       
 
         [gyt, gYt, ght_1, ght_2, ght_3, gct_1, gct_2, gct_3, 
                 git_1, git_2, git_3, gft_1, gft_2, gft_3, got_1, got_2, got_3,
                 gIt_1, gIt_2, gIt_3, gFt_1, gFt_2, gFt_3, gOt_1, gOt_2, gOt_3, gCt_1, gCt_2, gCt_3] = self.forwardPass(in1, htd1_1, htd1_2, htd1_3, ctd1_1, ctd1_2, ctd1_3)
             
-        outProb = T.switch(gyt > np.float32(0.05), gyt, np.float32(0.0)) #sigmoid output itself is probability, no need to normalise
+        outProb = T.switch(gyt > np.float32(self.genProbThreshold), gyt, np.float32(0.0)) #sigmoid output itself is probability, no need to normalise
         fdbkSamples = self.T_rng.binomial(size=(1,self.io_length), p=outProb, dtype=theano.config.floatX)
  
         return [fdbkSamples[0], gYt, ght_1, ght_2, ght_3, gct_1, gct_2, gct_3, 
@@ -419,7 +445,7 @@ class RNN4Music:
             ctd1_2 (theano tensor.vector) : c2(t-1), layer 2 memory state delayed by one time step
             ctd1_3 (theano tensor.vector) : c3(t-1), layer 3 memory state delayed by one time step
 
-            outputs (modifies instance variables):
+        outputs (modifies instance variables):
 
             self.yt, self.Yt (theano tensor.vector) : network output, network output beforen nonlinearity
             self.ht_1, self.ht_2, self.ht_3 (theano tensor.vector): output of each layer 
@@ -614,11 +640,22 @@ class RNN4Music:
         return T.mul(np.float32(2.0), T.nnet.sigmoid(T.mul(np.float32(2.0), inVec))) - np.float32(1.0)
         
     def RMSgrad(self, prevGrad, newGrad):
+        '''
+        auxiliary method to compute RMSprop updates
+        
+        arguments:
+            prevGrad (theano tensor): accumulated RMSprop gradient
+            newGrad (theano tensor): new gradient just calculated
+        '''
         gradSqr = T.mul(np.float32(0.9), T.mul(prevGrad, prevGrad)) + T.mul(np.float32(0.1), T.mul(newGrad, newGrad))
         return (newGrad / T.sqrt(T.maximum(self.epsilon, gradSqr)))
     
     def gdot(self, inVec):
-        ''' gdot(input) : deriviative of sigmoid '''
+        ''' gdot(input) : deriviative of sigmoid 
+
+            argument:
+                inVec (theano tensor)
+        '''
         return T.mul(T.nnet.sigmoid(inVec), np.float32(1.0) - T.nnet.sigmoid(inVec))
     
     
@@ -633,6 +670,8 @@ class RNN4Music:
         '''
         attaches zero vector in front of matrixc and throw away last row
         created to shorten syntax
+
+        argument: inMat (theano tensor.matrix)
         '''
         return T.concatenate([[T.zeros_like(inMat[0], dtype=theano.config.floatX)], inMat[0:inMat.shape[0]-1]], axis=0)
         
@@ -640,6 +679,8 @@ class RNN4Music:
         '''
         attaches zero vector at end of matrixc and throw away first row
         created to shorten syntax
+
+        argument: inMat (theano tensor.matrix)
         '''
         return T.concatenate([inMat[1:inMat.shape[0]], [T.zeros_like(inMat[0], dtype=theano.config.floatX)]], axis=0)
     
@@ -853,7 +894,26 @@ class RNN4Music:
 
 
     def gradSingleTune(self, T_egMB, T_egOutMB, h1_cont, h2_cont, h3_cont, c1_cont, c2_cont, c3_cont):
+        '''
+        computes gradient for all network parameters based on input examples.
 
+        arguments:
+            T_egMB (theano tensor.matrix): input example
+            T_egOutMB (theano tensor.matrix): output example
+            
+            h1_cont, h2_cont, h3_cont, 
+            c1_cont, c2_cont, c3_cont (theano tensor.vector): network "initial" (time -1) hidden outputs and states at layers 1, 2, 3 
+
+        returns:
+            returns[0:52] (theano tensor.matrix): gradients for Wxi1~3, Wxf1~3, Wxo1~3, Wxc1~3, Whi1~3, Whf1~3, Who1~3, Whc1~3, Why1~3, 
+                                                                    Wxj2~3, Wfj2~3, Wcj2~3, Woj2~3, Wci1~3, Wcf1~3, Wco1~3 network weights
+
+            returns[53:56] (theano tensor.matrix): gradients for bi1~3, bf1~3, bc1~3, bo1~3, by network biases 
+
+            returns[57:59]: hidden layer 1~3 outputs at last time step, option to feed into next gradient computation
+            
+            returns[60:62]: layer 1~3 memory unit outputs at last time step, option to feed into next gradient computation
+        '''
 
         #conveneint zero variables for output_info initial values:
         ioh1 = np.float32(np.asarray([[0.0]*self.io_length for n in range(self.h1_length)]))
@@ -1234,6 +1294,11 @@ class RNN4Music:
             startVectors (np.array): each row of startVectors represent a time step. the midi notes are assigned across the columns i.e. startVectors[#time][#midi note]
 
             noOfSamps (int): number of samples (time steps) to generate after running through the startVector example
+
+        returns:
+
+            result[0] (numpy.array) : genearted tune
+            result[1] (numpy.array) : genearted probabilities
         '''
                 
         T_startVectors = T.matrix(name='T_startVectors', dtype=theano.config.floatX)
