@@ -53,6 +53,12 @@ all network variables (hidden states etc) at time -1 are initialised with unifor
 self.muRand = np.float32(0.01) 
 ```
 
+for music generation, output notes with low probabilities are ignored by capping these probabilities to zero. The probability threshold for the cap can be modified in the RNN4music constructor:
+
+```
+self.genProbThreshold = 0.1
+```
+
 As well as the network architecture and training rates, other training parameters such as `sizeOfMiniBatch`, `noOfEpoch` through the training set, and `noOfEpochPerMB` are set in the beginning of `main()`. The length of midi files in the training example path are not necessarily the same. For fairer training, the `lengthOfMB` parameter sets the length of each example tune feeding into the network during training. If a particular example is of length shorter than `lengthOfMB`, it will be filled up by repeating itself, but if the example have more samples than `lengthOfMB`, it will be truncated. Training is carried out by calling:
 
 ```train(dataset, noOfEpochPerMB, noOfEpoch, sizeOfMiniBatch, lengthOfMB)```
