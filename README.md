@@ -1,5 +1,5 @@
 ## LSTMmusic
-Three layer Long-Short Term Memory network for music generation. References and more details can be found [here](https://freerangehen.github.io/DLSTM/). 
+Three layer Long-Short Term Memory network for music generation. References and more details can be found [here](https://freerangehen.github.io/). 
 
 ## setting up the environment
 I developed this with Python 2.7 + [Theano](http://www.deeplearning.net/software/theano/install.html#install) on Ubuntu Linux 14.04. 
