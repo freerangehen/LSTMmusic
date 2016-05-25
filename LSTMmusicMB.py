@@ -1065,6 +1065,7 @@ class RNN4Music:
 
         
         #RMS prop update gradient of all weights with previously saved gradient and newly summed (over time) gradient. newly summed gradients have magnitudes clipped to self.gradClip  
+        #l1 norm (absolute value) regularisation used, simply add {lambda * sign(weight)} to the gradient updates as sign(weight) is the derivative of the l1 norm. also = 0  when weight = 0 is safe 
         DWxi1 = self.RMSgrad(self.DWxi1p, T.mul(lam,T.sgn(self.Wxi_1)) + self.gClip(self.mean(Wxi1AccR)));  DWxi2 = self.RMSgrad(self.DWxi2p, T.mul(lam,T.sgn(self.Wxi_2)) + self.gClip(self.mean(Wxi2AccR)));  
         DWxi3 = self.RMSgrad(self.DWxi3p, T.mul(lam,T.sgn(self.Wxi_3)) + self.gClip(self.mean(Wxi3AccR)))
         DWxf1 = self.RMSgrad(self.DWxf1p, T.mul(lam,T.sgn(self.Wxf_1)) + self.gClip(self.mean(Wxf1AccR)));  DWxf2 = self.RMSgrad(self.DWxf2p, T.mul(lam,T.sgn(self.Wxf_2)) + self.gClip(self.mean(Wxf2AccR)));  
