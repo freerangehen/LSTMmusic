@@ -697,8 +697,8 @@ class RNN4Music:
         #with open(fileName+'.npz', "rb") as file_:
         #    loadedFile = np.load(file_)
         lF = np.load(fileName + '.npz')
-        self.instantaneousCost=lF['instantaneousCost']; self.gradClip=lF['gradClip']; self.h1_length=int(lF['h1_length']); self.h2_length=int(lF['h2_length']); self.io_length=int(lF['io_length']) 
-        print("loaded (h1_length,h2_length,io_length) = (" + str(self.h1_length) + "," + str(self.h2_length) + "," + str(self.io_length) + ")")
+        self.instantaneousCost=lF['instantaneousCost']; self.gradClip=lF['gradClip']; self.h1_length=int(lF['h1_length']); self.h2_length=int(lF['h2_length']); self.h3_length=int(lF['h3_length']); self.io_length=int(lF['io_length']) 
+        print("loaded (h1_length,h2_length,h3_length,io_length) = (" + str(self.h1_length) + "," + str(self.h2_length) + "," + str(self.h3_length) + "," + str(self.io_length) + ")")
         self.R1 = np.float32(lF['R1']); self.R2 = np.float32(lF['R2']); self.R3 = np.float32(lF['R3'])
         self.Wxi_1.set_value(lF['Wxi_1']); self.Wxi_2.set_value(lF['Wxi_2']); self.Wxi_3.set_value(lF['Wxi_3'])
         self.Wxf_1.set_value(lF['Wxf_1']); self.Wxf_2.set_value(lF['Wxf_2']); self.Wxf_3.set_value(lF['Wxf_3'])
@@ -757,7 +757,7 @@ class RNN4Music:
         fileName (string): npz filename to be saved, overwrites if exists. supply filename without .npz extension.
         '''
         #print("before saving, omega = " + str(self.T_omega.eval()))
-        np.savez(fileName, instantaneousCost = self.instantaneousCost, gradClip = self.gradClip, h1_length = self.h1_length, h2_length = self.h2_length, io_length = self.io_length, 
+        np.savez(fileName, instantaneousCost = self.instantaneousCost, gradClip = self.gradClip, h1_length = self.h1_length, h2_length = self.h2_length, h3_length = self.h3_length, io_length = self.io_length, 
                                     R1 = np.float32(self.R1), R2 = np.float32(self.R2), R3 = np.float32(self.R3),
                                     Wxi_1 = self.Wxi_1.eval(), Wxi_2 = self.Wxi_2.eval(), Wxi_3 = self.Wxi_3.eval(),
                                     Wxf_1 = self.Wxf_1.eval(), Wxf_2 = self.Wxf_2.eval(), Wxf_3 = self.Wxf_3.eval(),
@@ -1012,7 +1012,7 @@ class RNN4Music:
 
 
        
-    def train(self, dataset, noOfEpochPerMB, noOfEpoch, sizeOfMiniBatch, lengthOfMB):
+    def train(self, dataset, noOfEpochPerMB, noOfEpoch, sizeOfMiniBatch, lengthOfMB, lam):
         '''
         given input and output examples, trains the 3 layer LSTM using grad descent and RMSprop
 
@@ -1036,6 +1036,8 @@ class RNN4Music:
 
         sizeOfMiniBatch (int): the input example can be broken into further miniBatches. Each miniBatch induces a single gradient update per epoch. 
                                 the mini. batches will be randomised during training.
+        
+        lam (float32): scaling constant for regularisation
 
         '''
 
@@ -1063,26 +1065,38 @@ class RNN4Music:
 
         
         #RMS prop update gradient of all weights with previously saved gradient and newly summed (over time) gradient. newly summed gradients have magnitudes clipped to self.gradClip  
-        DWxi1 = self.RMSgrad(self.DWxi1p, self.gClip(self.mean(Wxi1AccR)));  DWxi2 = self.RMSgrad(self.DWxi2p, self.gClip(self.mean(Wxi2AccR)));  DWxi3 = self.RMSgrad(self.DWxi3p, self.gClip(self.mean(Wxi3AccR)))
-        DWxf1 = self.RMSgrad(self.DWxf1p, self.gClip(self.mean(Wxf1AccR)));  DWxf2 = self.RMSgrad(self.DWxf2p, self.gClip(self.mean(Wxf2AccR)));  DWxf3 = self.RMSgrad(self.DWxf3p, self.gClip(self.mean(Wxf3AccR)))
-        DWxo1 = self.RMSgrad(self.DWxo1p, self.gClip(self.mean(Wxo1AccR)));  DWxo2 = self.RMSgrad(self.DWxo2p, self.gClip(self.mean(Wxo2AccR)));  DWxo3 = self.RMSgrad(self.DWxo3p, self.gClip(self.mean(Wxo3AccR)))
-        DWxc1 = self.RMSgrad(self.DWxc1p, self.gClip(self.mean(Wxc1AccR)));  DWxc2 = self.RMSgrad(self.DWxc2p, self.gClip(self.mean(Wxc2AccR)));  DWxc3 = self.RMSgrad(self.DWxc3p, self.gClip(self.mean(Wxc3AccR)))
+        DWxi1 = self.RMSgrad(self.DWxi1p, T.mul(lam,T.sgn(self.Wxi_1)) + self.gClip(self.mean(Wxi1AccR)));  DWxi2 = self.RMSgrad(self.DWxi2p, T.mul(lam,T.sgn(self.Wxi_2)) + self.gClip(self.mean(Wxi2AccR)));  
+        DWxi3 = self.RMSgrad(self.DWxi3p, T.mul(lam,T.sgn(self.Wxi_3)) + self.gClip(self.mean(Wxi3AccR)))
+        DWxf1 = self.RMSgrad(self.DWxf1p, T.mul(lam,T.sgn(self.Wxf_1)) + self.gClip(self.mean(Wxf1AccR)));  DWxf2 = self.RMSgrad(self.DWxf2p, T.mul(lam,T.sgn(self.Wxf_2)) + self.gClip(self.mean(Wxf2AccR)));  
+        DWxf3 = self.RMSgrad(self.DWxf3p, T.mul(lam,T.sgn(self.Wxf_3)) + self.gClip(self.mean(Wxf3AccR)))
+        DWxo1 = self.RMSgrad(self.DWxo1p, T.mul(lam,T.sgn(self.Wxo_1)) + self.gClip(self.mean(Wxo1AccR)));  DWxo2 = self.RMSgrad(self.DWxo2p, T.mul(lam,T.sgn(self.Wxo_2)) + self.gClip(self.mean(Wxo2AccR)));  
+        DWxo3 = self.RMSgrad(self.DWxo3p, T.mul(lam,T.sgn(self.Wxo_3)) + self.gClip(self.mean(Wxo3AccR)))
+        DWxc1 = self.RMSgrad(self.DWxc1p, T.mul(lam,T.sgn(self.Wxc_1)) + self.gClip(self.mean(Wxc1AccR)));  DWxc2 = self.RMSgrad(self.DWxc2p, T.mul(lam,T.sgn(self.Wxc_2)) + self.gClip(self.mean(Wxc2AccR)));  
+        DWxc3 = self.RMSgrad(self.DWxc3p, T.mul(lam,T.sgn(self.Wxc_3)) + self.gClip(self.mean(Wxc3AccR)))
         
-        DWhi1 = self.RMSgrad(self.DWhi1p, self.gClip(self.mean(Whi1AccR)));  DWhi2 = self.RMSgrad(self.DWhi2p, self.gClip(self.mean(Whi2AccR)));  DWhi3 = self.RMSgrad(self.DWhi3p, self.gClip(self.mean(Whi3AccR)))
-        DWhf1 = self.RMSgrad(self.DWhf1p, self.gClip(self.mean(Whf1AccR)));  DWhf2 = self.RMSgrad(self.DWhf2p, self.gClip(self.mean(Whf2AccR)));  DWhf3 = self.RMSgrad(self.DWhf3p, self.gClip(self.mean(Whf3AccR)))
-        DWho1 = self.RMSgrad(self.DWho1p, self.gClip(self.mean(Who1AccR)));  DWho2 = self.RMSgrad(self.DWho2p, self.gClip(self.mean(Who2AccR)));  DWho3 = self.RMSgrad(self.DWho3p, self.gClip(self.mean(Who3AccR)))
-        DWhc1 = self.RMSgrad(self.DWhc1p, self.gClip(self.mean(Whc1AccR)));  DWhc2 = self.RMSgrad(self.DWhc2p, self.gClip(self.mean(Whc2AccR)));  DWhc3 = self.RMSgrad(self.DWhc3p, self.gClip(self.mean(Whc3AccR)))
+        DWhi1 = self.RMSgrad(self.DWhi1p, T.mul(lam,T.sgn(self.Whi_1)) + self.gClip(self.mean(Whi1AccR)));  DWhi2 = self.RMSgrad(self.DWhi2p, T.mul(lam,T.sgn(self.Whi_2)) + self.gClip(self.mean(Whi2AccR)));  
+        DWhi3 = self.RMSgrad(self.DWhi3p, T.mul(lam,T.sgn(self.Whi_3)) + self.gClip(self.mean(Whi3AccR)))
+        DWhf1 = self.RMSgrad(self.DWhf1p, T.mul(lam,T.sgn(self.Whf_1)) + self.gClip(self.mean(Whf1AccR)));  DWhf2 = self.RMSgrad(self.DWhf2p, T.mul(lam,T.sgn(self.Whf_2)) + self.gClip(self.mean(Whf2AccR)));  
+        DWhf3 = self.RMSgrad(self.DWhf3p, T.mul(lam,T.sgn(self.Whf_3)) + self.gClip(self.mean(Whf3AccR)))
+        DWho1 = self.RMSgrad(self.DWho1p, T.mul(lam,T.sgn(self.Who_1)) + self.gClip(self.mean(Who1AccR)));  DWho2 = self.RMSgrad(self.DWho2p, T.mul(lam,T.sgn(self.Who_2)) + self.gClip(self.mean(Who2AccR)));  
+        DWho3 = self.RMSgrad(self.DWho3p, T.mul(lam,T.sgn(self.Who_3)) + self.gClip(self.mean(Who3AccR)))
+        DWhc1 = self.RMSgrad(self.DWhc1p, T.mul(lam,T.sgn(self.Whc_1)) + self.gClip(self.mean(Whc1AccR)));  DWhc2 = self.RMSgrad(self.DWhc2p, T.mul(lam,T.sgn(self.Whc_2)) + self.gClip(self.mean(Whc2AccR)));  
+        DWhc3 = self.RMSgrad(self.DWhc3p, T.mul(lam,T.sgn(self.Whc_3)) + self.gClip(self.mean(Whc3AccR)))
         
-        DWhy1 = self.RMSgrad(self.DWhy1p, self.gClip(self.mean(Why1AccR)));  DWhy2 = self.RMSgrad(self.DWhy2p, self.gClip(self.mean(Why2AccR)));  DWhy3 = self.RMSgrad(self.DWhy3p, self.gClip(self.mean(Why3AccR)))
+        DWhy1 = self.RMSgrad(self.DWhy1p, T.mul(lam,T.sgn(self.Why_1)) + self.gClip(self.mean(Why1AccR)));  DWhy2 = self.RMSgrad(self.DWhy2p, T.mul(lam,T.sgn(self.Why_2)) + self.gClip(self.mean(Why2AccR)));  
+        DWhy3 = self.RMSgrad(self.DWhy3p, T.mul(lam,T.sgn(self.Why_3)) + self.gClip(self.mean(Why3AccR)))
 
-        DWxj2 = self.RMSgrad(self.DWxj2p, self.gClip(self.mean(Wxj2AccR)));  DWxj3 = self.RMSgrad(self.DWxj3p, self.gClip(self.mean(Wxj3AccR)))
-        DWfj2 = self.RMSgrad(self.DWfj2p, self.gClip(self.mean(Wfj2AccR)));  DWfj3 = self.RMSgrad(self.DWfj3p, self.gClip(self.mean(Wfj3AccR)))
-        DWcj2 = self.RMSgrad(self.DWcj2p, self.gClip(self.mean(Wcj2AccR)));  DWcj3 = self.RMSgrad(self.DWcj3p, self.gClip(self.mean(Wcj3AccR)))
-        DWoj2 = self.RMSgrad(self.DWoj2p, self.gClip(self.mean(Woj2AccR)));  DWoj3 = self.RMSgrad(self.DWoj3p, self.gClip(self.mean(Woj3AccR)))
+        DWxj2 = self.RMSgrad(self.DWxj2p, T.mul(lam,T.sgn(self.Wxj_2)) + self.gClip(self.mean(Wxj2AccR)));  DWxj3 = self.RMSgrad(self.DWxj3p, T.mul(lam,T.sgn(self.Wxj_3)) + self.gClip(self.mean(Wxj3AccR)))
+        DWfj2 = self.RMSgrad(self.DWfj2p, T.mul(lam,T.sgn(self.Wfj_2)) + self.gClip(self.mean(Wfj2AccR)));  DWfj3 = self.RMSgrad(self.DWfj3p, T.mul(lam,T.sgn(self.Wfj_3)) + self.gClip(self.mean(Wfj3AccR)))
+        DWcj2 = self.RMSgrad(self.DWcj2p, T.mul(lam,T.sgn(self.Wcj_2)) + self.gClip(self.mean(Wcj2AccR)));  DWcj3 = self.RMSgrad(self.DWcj3p, T.mul(lam,T.sgn(self.Wcj_3)) + self.gClip(self.mean(Wcj3AccR)))
+        DWoj2 = self.RMSgrad(self.DWoj2p, T.mul(lam,T.sgn(self.Woj_2)) + self.gClip(self.mean(Woj2AccR)));  DWoj3 = self.RMSgrad(self.DWoj3p, T.mul(lam,T.sgn(self.Woj_3)) + self.gClip(self.mean(Woj3AccR)))
         
-        DWci1 = self.RMSgrad(self.DWci1p, self.gClip(self.mean(Wci1AccR)));  DWci2 = self.RMSgrad(self.DWci2p, self.gClip(self.mean(Wci2AccR)));  DWci3 = self.RMSgrad(self.DWci3p, self.gClip(self.mean(Wci3AccR)))
-        DWcf1 = self.RMSgrad(self.DWcf1p, self.gClip(self.mean(Wcf1AccR)));  DWcf2 = self.RMSgrad(self.DWcf2p, self.gClip(self.mean(Wcf2AccR)));  DWcf3 = self.RMSgrad(self.DWcf3p, self.gClip(self.mean(Wcf3AccR)))
-        DWco1 = self.RMSgrad(self.DWco1p, self.gClip(self.mean(Wco1AccR)));  DWco2 = self.RMSgrad(self.DWco2p, self.gClip(self.mean(Wco2AccR)));  DWco3 = self.RMSgrad(self.DWco3p, self.gClip(self.mean(Wco3AccR)))
+        DWci1 = self.RMSgrad(self.DWci1p, T.mul(lam,T.sgn(self.Wci_1)) + self.gClip(self.mean(Wci1AccR)));  DWci2 = self.RMSgrad(self.DWci2p, T.mul(lam,T.sgn(self.Wci_2)) + self.gClip(self.mean(Wci2AccR)));  
+        DWci3 = self.RMSgrad(self.DWci3p, T.mul(lam,T.sgn(self.Wci_3)) + self.gClip(self.mean(Wci3AccR)))
+        DWcf1 = self.RMSgrad(self.DWcf1p, T.mul(lam,T.sgn(self.Wcf_1)) + self.gClip(self.mean(Wcf1AccR)));  DWcf2 = self.RMSgrad(self.DWcf2p, T.mul(lam,T.sgn(self.Wcf_2)) + self.gClip(self.mean(Wcf2AccR)));  
+        DWcf3 = self.RMSgrad(self.DWcf3p, T.mul(lam,T.sgn(self.Wcf_3)) + self.gClip(self.mean(Wcf3AccR)))
+        DWco1 = self.RMSgrad(self.DWco1p, T.mul(lam,T.sgn(self.Wco_1)) + self.gClip(self.mean(Wco1AccR)));  DWco2 = self.RMSgrad(self.DWco2p, T.mul(lam,T.sgn(self.Wco_2)) + self.gClip(self.mean(Wco2AccR)));  
+        DWco3 = self.RMSgrad(self.DWco3p, T.mul(lam,T.sgn(self.Wco_3)) + self.gClip(self.mean(Wco3AccR)))
 
         Dbi1 = self.RMSgrad(self.Dbi1p, self.gClip(self.mean(D_It_1AccR)))
         Dbi2 = self.RMSgrad(self.Dbi2p, self.gClip(self.mean(D_It_2AccR)))
